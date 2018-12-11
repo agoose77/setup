@@ -36,7 +36,7 @@ class SysconfigData(NamedTuple):
 
 _depth = 0
 
-
+# Logging and utilities ################################################################################################
 @contextmanager
 def context():
     global _depth
@@ -96,6 +96,7 @@ def detect_changed_files(directory):
     changed_files |= set(path.iterdir()) - before_files
 
 
+#  Installers ##########################################################################################################
 def install_pip():
     check_call(["sudo", "apt", "install", "python3-pip"])
 
