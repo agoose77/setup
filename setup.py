@@ -397,7 +397,7 @@ def graphql_errors_to_string(errors):
     messages = []
     for error in errors:
         locations = [
-            f'(line {p["line"]}, column {p["column"]}' for p in error["locations"]
+            f'(line {p["line"]}, column {p["column"]})' for p in error["locations"]
         ]
         messages.append(f'{error["message"]} on {", ".join(locations)}')
     return "\n".join(messages)
@@ -418,7 +418,7 @@ def execute_github_graphql_query(token: str, query: str) -> dict:
         resp = request.urlopen(req)
     except error.HTTPError as err:
         if err.code == 401:
-            raise TokenInvalidError("Token was invalid!") from err
+            raise TokenInvalidError(f"Token {token!r} was invalid!") from err
         raise
 
     result = json.loads(resp.read())
@@ -462,7 +462,7 @@ def find_latest_github_tag(token: str, owner: str, name: str) -> GitTag:
     from string import Template
 
     query_template = """{
-          repository(owner:$owner, name: $name) {
+          repository(owner:"$owner", name: "$name") {
             refs(refPrefix: "refs/tags/", first: 1, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
               edges {
                 node {
@@ -488,7 +488,7 @@ def find_latest_github_tag(token: str, owner: str, name: str) -> GitTag:
         }
     """
     query = Template(query_template).substitute(owner=owner, name=name)
-    result = execute_github_graphql_query(query, token)
+    result = execute_github_graphql_query(token, query)
 
     edge, = result["data"]["repository"]["refs"]["edges"]
     obj = edge["node"]
@@ -497,7 +497,7 @@ def find_latest_github_tag(token: str, owner: str, name: str) -> GitTag:
     while "target" in obj:
         obj = obj["target"]
     url = obj["tarballUrl"]
-    return GitTag(name=tag, tarballUrl=url)
+    return GitTag(name=tag, tarball_url=url)
 
 
 def get_pyenv_sysconfig_data(virtualenv_name: str) -> SysconfigData:
@@ -552,7 +552,7 @@ def install_root(virtualenv_name: str, n_threads: int, github_token: str):
             cmd.tar("-zxvf", tar_filename)
         root_dir, = changed_files
         assert root_dir.is_dir(), root_dir
-
+        
     # Install deps
     install_with_apt(
         "libx11-dev",
@@ -566,11 +566,11 @@ def install_root(virtualenv_name: str, n_threads: int, github_token: str):
     # Find various paths for virtual environment
     sysconfig_data = get_pyenv_sysconfig_data(virtualenv_name)
 
-    lib_dir_path = Path(sysconfig_data["config_vars"]["LIBDIR"])
-    python_lib_path = lib_dir_path / sysconfig_data["config_vars"]["LDLIBRARY"]
-    bin_dir_path = Path(sysconfig_data["config_vars"]["BINDIR"])
+    lib_dir_path = Path(sysconfig_data.config_vars["LIBDIR"])
+    python_lib_path = lib_dir_path / sysconfig_data.config_vars["LDLIBRARY"]
+    bin_dir_path = Path(sysconfig_data.config_vars["BINDIR"])
     python_bin_path = bin_dir_path / "python"
-    python_include_path = Path(sysconfig_data["paths"]["include"])
+    python_include_path = Path(sysconfig_data.paths["include"])
 
     configuration = {
         "PYTHON_INCLUDE_DIR": python_include_path,
@@ -670,7 +670,7 @@ if __name__ == "__main__":
     install_git()
     install_zsh()
     install_pyenv(PYTHON_VERSION)
-    install_jupyter(PYTHON_VERSION, VIRTUALENV_NAME)
+    install_jupyter(PYTHON_VERSION, VIRTUALENV_NAME)   
     install_chrome()
     install_gnome_theme()
     install_gnome_tweak_tool()
