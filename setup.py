@@ -6,7 +6,7 @@ import json
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
-from subprocess import check_call, check_output
+from subprocess import check_output
 from typing import NamedTuple, List, Dict
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,7 @@ logger.addHandler(ch)
 
 ZSHRC_PATH = Path("~/.zshrc").expanduser()
 ZPROFILE_PATH = Path("~/.zprofile").expanduser()
+GPG_HOME_PATH = Path("~/.gnupg").expanduser()
 
 
 class GitTag(NamedTuple):
@@ -98,15 +99,16 @@ def detect_changed_files(directory):
 
 #  Installers ##########################################################################################################
 def install_pip():
-    check_call(["sudo", "apt", "install", "python3-pip"])
+    return check_output(["sudo", "apt", "install", "python3-pip"])
 
 
 def install_plumbum():
-    check_call([sys.executable, "-m", "pip", "install", "plumbum"])
+    output = check_output([sys.executable, "-m", "pip", "install", "plumbum"])
 
     import site
 
     sys.path.append(site.getusersitepackages())
+    return output
 
 
 def _make_sudo_in(text):
@@ -114,7 +116,11 @@ def _make_sudo_in(text):
 
 
 def install_with_apt(*packages):
-    (cmd.sudo[cmd.apt[("install", *packages)]] << "\n")()
+    return (cmd.sudo[cmd.apt[("install", *packages)]] << "\n")()
+
+
+def install_with_pip(*packages):
+    return check_output([sys.executable, "-m", "pip", "install", *packages])
 
 
 def install_powerline_fonts():
@@ -376,10 +382,45 @@ def install_gnome_favourites():
     cmd.gsettings("set", "org.gnome.shell", "favorite-apps", str(favourites))
 
 
-def install_git():
-    install_with_apt("git")
-    cmd.git("config", "--global", "user.email", "goosey15@gmail.com")
-    cmd.git("config", "--global", "user.name", "Angus Hollands")
+def create_gpg_key(name, email_address, key_length):
+    import gnupg
+
+    gpg = gnupg.GPG(homedir=str(GPG_HOME_PATH))
+    input_data = gpg.gen_key_input(
+        key_type="RSA", key_length=key_length, name_real=name, name_email=email_address
+    )
+    log("Generating GPG key")
+    key = gpg.gen_key(input_data)
+    log("Exporting GPG key")
+    key_data = next(k for k in gpg.list_keys() if k['fingerprint'] == str(key))
+    signing_key = key_data['keyid']
+    return gpg.export_keys(signing_key), signing_key
+
+
+def install_git(name, email_address, key_length):
+    install_with_apt("git", "gnupg")
+    install_with_pip("gnupg")
+
+    cmd.git("config", "--global", "user.email", email_address)
+    cmd.git("config", "--global", "user.name", name)
+
+    # Create public key and copy to clipboard
+    public_key, signing_key = create_gpg_key(name, email_address, key_length)
+    (cmd.echo[public_key] | cmd.xclip["-sel", "clip"])()
+
+    # Add key to github
+    cmd.google_chrome("https://github.com/settings/gpg/new")
+    cmd.git("config", "--global", "commit.gpgsign", "true")
+    cmd.git("config", "--global", "user.signingkey", signing_key)
+
+    agent_path = GPG_HOME_PATH / "gpg-agent.conf"
+    agent_path.touch()
+    agent_path.write_text(
+        agent_path.read_text()
+        + """
+default-cache-ttl 28800
+max-cache-ttl 28800"""
+    )
 
 
 def make_or_find_sources_dir():
@@ -389,7 +430,7 @@ def make_or_find_sources_dir():
     return sources
 
 
-class TokenInvalidError(Exception):
+class TokenInvalidError(ValueError):
     pass
 
 
@@ -427,9 +468,11 @@ def execute_github_graphql_query(token: str, query: str) -> dict:
     return result
 
 
-def get_github_token() -> str:
+def validate_github_token(token: str) -> str:
     """
-    Read GitHub personal access token from STDIN and validate it
+    Test GitHub token to ensure it is valid.
+    
+    :param token: GitHub personal access token
     :return: GitHub personal access token
     """
     test_query = """
@@ -439,14 +482,7 @@ def get_github_token() -> str:
           }
     }
     """
-    while True:
-        token: str = input("Enter GitHub personal token: ")
-        try:
-            execute_github_graphql_query(token, test_query)
-        except TokenInvalidError:
-            log("Invalid token, trying again ...", level=logging.ERROR)
-        else:
-            break
+    execute_github_graphql_query(token, test_query)
     return token
 
 
@@ -552,7 +588,7 @@ def install_root(virtualenv_name: str, n_threads: int, github_token: str):
             cmd.tar("-zxvf", tar_filename)
         root_dir, = changed_files
         assert root_dir.is_dir(), root_dir
-        
+
     # Install deps
     install_with_apt(
         "libx11-dev",
@@ -599,41 +635,41 @@ def bootstrap():
     install_plumbum()
 
 
-def get_virtualenv_name() -> str:
+NO_DEFAULT = object()
+
+
+def get_user_input(prompt: str, default=NO_DEFAULT, converter=None):
     """Get the name of the main virtual environment"""
-    name = input("Enter virtualenv name [sci]: ")
-    if not name:
-        return "sci"
-    return name
-
-
-def get_number_of_threads() -> int:
-    # Get number of build threads
-    n_total_threads = (
-        check_output(["grep", "-c", "cores", "/proc/cpuinfo"]).decode().strip()
-    )
-
     while True:
-        n_threads_str = input(
-            f"Enter number of available build threads [{n_total_threads}]: "
-        )
-        if not n_threads_str:
-            return n_total_threads
+        if default is NO_DEFAULT:
+            value = input(f"{prompt}: ")
+            if not value:
+                log(f"A value is required! Try again.", level=logging.ERROR)
+                continue
+        else:
+            value = input(f"{prompt} [{default}]: ")
+            if not value:
+                value = default
 
-        # Validate the threads
-        n_threads = int(n_threads_str)
-        if not 0 < n_threads <= n_total_threads:
-            log(f"Invalid number of threads {n_threads}!", level=logging.ERROR)
-            continue
-        return n_threads
+        if converter is not None:
+            try:
+                value = converter(value)
+            except ValueError:
+                log(f"Invalid value {value!r}! Try again.", level=logging.ERROR)
+                continue
+
+        return value
 
 
-def get_python_version() -> str:
-    default_version = "3.7.1"
-    version = input(f"Enter Python version string [{default_version}]: ")
-    if not version:
-        return default_version
-    return version
+def get_max_system_threads() -> int:
+    return int(check_output(["grep", "-c", "cores", "/proc/cpuinfo"]).decode().strip())
+
+
+def convert_number_threads(n_total_threads: int, n_threads_str: str) -> int:
+    n_threads = int(n_threads_str)
+    if not 0 < n_threads <= n_total_threads:
+        raise ValueError(f"Invalid number of threads {n_threads}!")
+    return n_threads
 
 
 # Decorate all installer functions
@@ -648,11 +684,20 @@ if __name__ == "__main__":
     from plumbum import cmd, local
     import plumbum.colors
 
-    N_BUILD_THREADS = get_number_of_threads()
-    VIRTUALENV_NAME = get_virtualenv_name()
-    PYTHON_VERSION = get_python_version()
-    GITHUB_TOKEN = get_github_token()
-
+    N_MAX_SYSTEM_THREADS = get_max_system_threads()
+    N_BUILD_THREADS = get_user_input(
+        "Enter number of build threads",
+        N_MAX_SYSTEM_THREADS,
+        lambda s: convert_number_threads(N_MAX_SYSTEM_THREADS, s),
+    )
+    VIRTUALENV_NAME = get_user_input("Enter virtualenv name", "sci")
+    PYTHON_VERSION = get_user_input("Enter Python version string", "3.7.1")
+    GIT_USER_NAME = get_user_input("Enter git user-name", "Angus Hollands")
+    GIT_EMAIL_ADDRESS = get_user_input("Enter git email-address", "goosey15@gmail.com")
+    GIT_KEY_LENGTH = get_user_input("Enter git key length", 4096, int)
+    GITHUB_TOKEN = get_user_input(
+        "Enter GitHub personal token", converter=validate_github_token
+    )
     install_with_apt(
         "cmake",
         "cmake-gui",
@@ -666,12 +711,13 @@ if __name__ == "__main__":
         "libreadline-dev",
         "libffi-dev",
         "libsqlite3-dev",
+        "xclip",
     )
-    install_git()
+    install_chrome()
+    install_git(GIT_USER_NAME, GIT_EMAIL_ADDRESS, GIT_KEY_LENGTH)
     install_zsh()
     install_pyenv(PYTHON_VERSION)
-    install_jupyter(PYTHON_VERSION, VIRTUALENV_NAME)   
-    install_chrome()
+    install_jupyter(PYTHON_VERSION, VIRTUALENV_NAME)
     install_gnome_theme()
     install_gnome_tweak_tool()
     install_canta_theme()
