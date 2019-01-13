@@ -314,16 +314,22 @@ def install_jupyter(python_version, virtualenv_name):
     :param virtualenv_name: Name of virtual environment
     :return:
     """
+    # Install npm
+    install_with_apt("npm")
+
     pyenv_root = local.env.home / ".pyenv"
     pyenv = local[pyenv_root / "bin" / "pyenv"]
     pyenv("virtualenv", python_version, virtualenv_name)
 
     # Install packages
-    pip = local[pyenv_root / "versions" / virtualenv_name / "bin" / "pip"]
-    pip("install", "jupyter", "jupyterlab", "numba", "scipy", "numpy")
+    virtualenv_bin = pyenv_root / "versions" / virtualenv_name / "bin"
+    pip = local[virtualenv_bin / "pip"]
+    pip("install", "jupyter", "jupyterlab", "numba", "scipy", "numpy", "matplotlib", "ipympl")
 
-    # Install npm
-    install_with_apt("npm")
+    # Install labextensions
+    jupyter = local[virtualenv_bin / "jupyter"]
+    jupyter("labextension", "install", "@jupyter-widgets/jupyterlab-manager")
+    jupyter("labextension", "install", "jupyter-matplotlib")
 
 
 def install_spotify():
