@@ -37,6 +37,7 @@ class SysconfigData(NamedTuple):
 
 _depth = 0
 
+
 # Logging and utilities ################################################################################################
 @contextmanager
 def context():
@@ -284,12 +285,12 @@ def install_pyenv(python_version):
     """
     # Install pyenv
     (
-        cmd.wget[
-            "-O",
-            "-",
-            "https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer",
-        ]
-        | cmd.bash
+            cmd.wget[
+                "-O",
+                "-",
+                "https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer",
+            ]
+            | cmd.bash
     )()
     update_path("$HOME/.pyenv/bin")
 
@@ -353,22 +354,48 @@ def install_micro():
 
 
 def install_keyboard_shortcuts():
+    install_with_apt("xdotool")
+
+    custom_bindings = [
+        ("Screenshot area with Shutter", "shutter -s", "Print"),
+        ("Spotify", "spotify", "<Super>s"),
+
+        # Make custom bindings for audio to avoid overwriting defaults
+        *(
+            (name, f"xdotool key --clearmodifiers {key}", binding) for name, key, binding in
+            # Create "xdotool" command for each key in the following
+            [("Next", "XF86AudioNext", "<Alt><Super>Right"),
+             ("Previous", "XF86AudioPrev", "<Alt><Super>Left"),
+             ("Play/pause", "XF86AudioPlay", "<Alt><Super>Space"),
+             ("Volume up", "XF86AudioRaiseVolume", "<Alt><Super>Up"),
+             ("Volume down", "XF86AudioLowerVolume", "<Alt><Super>Down")]
+        )
+    ]
+
+    media_settings_path = "org.gnome.settings-daemon.plugins.media-keys"
+    custom_binding_paths = [f"/{media_settings_path.replace('.', '/')}/custom-keybindings/custom{i}/"
+                            for i in range(len(custom_bindings))]
+
+    # Set normal keybindings
     bindings = {
         "home": "<Super>f",
         "email": "<Super>e",
         "terminal": "<Super>t",
         "www": "<Super>w",
         "control-center": "<Super>x",
-        "next": "<Alt><Super>Right",
-        "previous": "<Alt><Super>Left",
-        "play": "<Alt><Super>Space",
-        "volume-up": "<Alt><Super>Up",
-        "volume-down": "<Alt><Super>Down",
+        "custom-keybindings": custom_binding_paths,
     }
+
     for name, binding in bindings.items():
         cmd.gsettings(
-            "set", "org.gnome.settings-daemon.plugins.media-keys", name, f"'{binding}'"
+            "set", media_settings_path, name, repr(binding)
         )
+
+    # Set custom keybindings
+    for path, (name, command, binding) in zip(custom_binding_paths, custom_bindings):
+        cmd.gsettings("set", f"{media_settings_path}.custom-keybinding:{path}", "name", repr(name))
+        cmd.gsettings("set", f"{media_settings_path}.custom-keybinding:{path}", "command", repr(command))
+        cmd.gsettings("set", f"{media_settings_path}.custom-keybinding:{path}", "binding", repr(binding))
 
 
 def install_atom():
