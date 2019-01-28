@@ -407,7 +407,7 @@ def install_gnome_favourites():
         "google-chrome.desktop",
         "org.gnome.Nautilus.desktop",
         "mailspring_mailspring.desktop",
-        "oevince.desktop",
+        "evince.desktop",
         "org.gnome.Terminal.desktop",
         "spotify_spotify.desktop",
         "firefox.desktop",
