@@ -407,10 +407,12 @@ def install_gnome_favourites():
         "google-chrome.desktop",
         "org.gnome.Nautilus.desktop",
         "mailspring_mailspring.desktop",
+        "oevince.desktop",
         "org.gnome.Terminal.desktop",
         "spotify_spotify.desktop",
         "firefox.desktop",
         "atom_atom.desktop",
+        "pycharm-professional_pycharm-professional.desktop",
     ]
     cmd.gsettings("set", "org.gnome.shell", "favorite-apps", str(favourites))
 
@@ -661,6 +663,11 @@ def install_root(virtualenv_name: str, n_threads: int, github_token: str):
             # Run checkinstall
             cmd.sudo[cmd.checkinstall] & plumbum.FG
 
+                        
+def install_jetbrains():
+    (cmd.sudo[cmd.snap["install", "pycharm-professional", "--classic"]] << "\n")()
+    (cmd.sudo[cmd.snap["install", "clion", "--classic"]] << "\n")()
+                        
 
 def bootstrap():
     """Install system pip, and subsequently plumbum"""
@@ -764,3 +771,4 @@ if __name__ == "__main__":
     install_tex()
     install_root(VIRTUALENV_NAME, N_BUILD_THREADS, GITHUB_TOKEN)
     install_pandoc(GITHUB_TOKEN)
+    install_jetbrains()
