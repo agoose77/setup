@@ -145,6 +145,12 @@ def update_path(*components):
     ZSHRC_PATH.write_text(re.sub('export PATH="(.*)"', replacer, contents))
 
 
+def append_init_scripts(*scripts):
+    zshrc_contents = ZSHRC_PATH.read_text()
+    zshrc_contents += '\n'.join(scripts)
+    ZSHRC_PATH.write_text(zshrc_contents)
+    
+
 def install_zsh(theme="agnoster"):
     install_with_apt("zsh")
     cmd.sudo[cmd.chsh["-s", cmd.which("zsh").strip()]]()
@@ -295,12 +301,8 @@ def install_pyenv(python_version):
     update_path("$HOME/.pyenv/bin")
 
     # Add init scripts
-    zshrc_contents = ZSHRC_PATH.read_text()
-    zshrc_contents += """
-eval "$(pyenv init -)"
-eval "$(pyenv virtualenv-init -)"
-"""
-    ZSHRC_PATH.write_text(zshrc_contents)
+    append_init_scripts("eval \"$(pyenv init -)\"", 
+    					"eval \"$(pyenv virtualenv-init -)\"")
 
     # Install a particular interpreter (from source)
     pyenv = local[local.env.home / ".pyenv" / "bin" / "pyenv"]
@@ -325,7 +327,7 @@ def install_jupyter(python_version, virtualenv_name):
     # Install packages
     virtualenv_bin = pyenv_root / "versions" / virtualenv_name / "bin"
     pip = local[virtualenv_bin / "pip"]
-    pip("install", "jupyter", "jupyterlab", "numba", "scipy", "numpy", "matplotlib", "ipympl")
+    pip("install", "jupyter", "jupyterlab", "numba", "scipy", "numpy", "matplotlib", "ipympl", "numpy-html", "jupytex")
 
     # Install labextensions
     jupyter = local[virtualenv_bin / "jupyter"]
@@ -662,12 +664,14 @@ def install_root(virtualenv_name: str, n_threads: int, github_token: str):
 
             # Run checkinstall
             cmd.sudo[cmd.checkinstall] & plumbum.FG
+	
+	append_init_scripts(". thisroot.sh")
 
-                        
+
 def install_jetbrains():
     (cmd.sudo[cmd.snap["install", "pycharm-professional", "--classic"]] << "\n")()
     (cmd.sudo[cmd.snap["install", "clion", "--classic"]] << "\n")()
-                        
+
 
 def bootstrap():
     """Install system pip, and subsequently plumbum"""
