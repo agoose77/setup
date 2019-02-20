@@ -458,6 +458,8 @@ def install_git(name, email_address, key_length):
 default-cache-ttl 28800
 max-cache-ttl 28800"""
     )
+    
+    append_init_scripts("# GPG signing\nexport GPG_TTY=$(tty)")
 
 
 def make_or_find_sources_dir():
