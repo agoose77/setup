@@ -758,6 +758,7 @@ if __name__ == "__main__":
         "libffi-dev",
         "libsqlite3-dev",
         "xclip",
+	"libbz2-dev"
     )
     install_chrome()
     install_git(GIT_USER_NAME, GIT_EMAIL_ADDRESS, GIT_KEY_LENGTH)
