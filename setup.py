@@ -165,6 +165,12 @@ def install_zsh(theme="agnoster"):
 
     # Enable PATH variable
     zshrc_contents = re.sub(r"# (export PATH.*)", "$1", zshrc_contents)
+    zshrc_contents = f"""
+# Hide prompt
+DEFAULT_USER=`whoami`
+
+{zshrc_contents}
+    """
     ZSHRC_PATH.write_text(zshrc_contents)
 
     # Add useful paths to PATH
