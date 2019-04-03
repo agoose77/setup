@@ -746,7 +746,7 @@ if __name__ == "__main__":
         lambda s: convert_number_threads(N_MAX_SYSTEM_THREADS, s),
     )
     VIRTUALENV_NAME = get_user_input("Enter virtualenv name", "sci")
-    PYTHON_VERSION = get_user_input("Enter Python version string", "3.7.1")
+    PYTHON_VERSION = get_user_input("Enter Python version string", "miniconda3-latest")
     GIT_USER_NAME = get_user_input("Enter git user-name", "Angus Hollands")
     GIT_EMAIL_ADDRESS = get_user_input("Enter git email-address", "goosey15@gmail.com")
     GIT_KEY_LENGTH = get_user_input("Enter git key length", 4096, int)
