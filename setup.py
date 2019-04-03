@@ -147,6 +147,8 @@ def update_path(*components):
 
 def append_init_scripts(*scripts):
     zshrc_contents = ZSHRC_PATH.read_text()
+    if not zsrhc_contents.endswith("\n"):
+        zshrc_contents += "\n"
     zshrc_contents += '\n'.join(scripts)
     ZSHRC_PATH.write_text(zshrc_contents)
     
@@ -340,7 +342,8 @@ def install_jupyter(python_version, virtualenv_name):
     jupyter("labextension", "install", "@jupyter-widgets/jupyterlab-manager")
     jupyter("labextension", "install", "jupyter-matplotlib")
 
-
+    append_init_scripts('alias jl="jupyter lab"')
+        
 def install_spotify():
     cmd.sudo[cmd.snap["install", "spotify"]]()
 
