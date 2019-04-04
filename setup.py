@@ -20,9 +20,10 @@ ch.setFormatter(formatter)
 
 logger.addHandler(ch)
 
-ZSHRC_PATH = Path("~/.zshrc").expanduser()
-ZPROFILE_PATH = Path("~/.zprofile").expanduser()
-GPG_HOME_PATH = Path("~/.gnupg").expanduser()
+HOME_PATH = Path.home()
+ZSHRC_PATH = HOME_PATH / ".zshrc"
+ZPROFILE_PATH = HOME_PATH / ".zprofile"
+GPG_HOME_PATH = HOME_PATH / ".gnupg"
 
 
 class GitTag(NamedTuple):
@@ -675,8 +676,9 @@ def install_root(virtualenv_name: str, n_threads: int, github_token: str):
 
             # Run checkinstall
             cmd.sudo[cmd.checkinstall] & plumbum.FG
-	
-	append_init_scripts(". thisroot.sh")
+                        
+	# Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
+    ZSHRC_PATH.write_text(". thisroot.sh\n" + ZSHRC_PATH.read_text())
 
 
 def install_jetbrains():
