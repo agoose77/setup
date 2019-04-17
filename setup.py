@@ -469,7 +469,9 @@ default-cache-ttl 28800
 max-cache-ttl 28800"""
     )
     
-    append_init_scripts("# GPG signing\nexport GPG_TTY=$(tty)")
+    append_init_scripts("# GPG signing\nexport GPG_TTY=$(tty)",
+                        "alias tasks='git grep -EI \"TODO|FIXME\"'",
+                        "alias ts=\"tasks\"")
 
 
 def make_or_find_sources_dir():
