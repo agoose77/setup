@@ -336,13 +336,17 @@ def install_jupyter(python_version, virtualenv_name):
     # Install packages
     virtualenv_bin = pyenv_root / "versions" / virtualenv_name / "bin"
     pip = local[virtualenv_bin / "pip"]
-    pip("install", "jupyter", "jupyterlab", "numba", "scipy", "numpy", "matplotlib", "ipympl", "numpy-html", "jupytex")
+    pip("install", "jupyter", "jupyterlab", "numba", "scipy", "numpy", "matplotlib", "ipympl", "numpy-html", "jupytex", "bqplot")
 
     # Install labextensions
     jupyter = local[virtualenv_bin / "jupyter"]
     jupyter("labextension", "install", "@jupyter-widgets/jupyterlab-manager")
     jupyter("labextension", "install", "jupyter-matplotlib")
-
+    jupyter("labextension", "install", "bqplot")
+    jupyter("labextension", "install", "@agoose77/jupyterlab-markup")
+    jupyter("labextension", "install", "@telamonian/theme-darcula")
+    jupyter("labextension", "install", "@jupyterlab/katex-extension")
+        
     append_init_scripts('alias jl="jupyter lab"')
         
 def install_spotify():
