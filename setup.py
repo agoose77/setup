@@ -686,6 +686,7 @@ def install_root(virtualenv_name: str, n_threads: int, github_token: str):
 def install_jetbrains():
     (cmd.sudo[cmd.snap["install", "pycharm-professional", "--classic"]] << "\n")()
     (cmd.sudo[cmd.snap["install", "clion", "--classic"]] << "\n")()
+    (cmd.sudo[cmd.snap["install", "webstorm", "--classic"]] << "\n")()
 
 
 def bootstrap():
