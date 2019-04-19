@@ -373,7 +373,7 @@ def install_keyboard_shortcuts():
     install_with_apt("xdotool")
 
     custom_bindings = [
-        ("Screenshot area with Shutter", "shutter -s", "Print"),
+        ("Screenshot area with Flameshot", "flameshot gui", "Print"),
         ("Spotify", "spotify", "<Super>s"),
 
         # Make custom bindings for audio to avoid overwriting defaults
@@ -771,7 +771,7 @@ if __name__ == "__main__":
         "checkinstall",
         "htop",
         "lm-sensors",
-        "shutter",
+        "flameshot",
         "libreadline-dev",
         "libffi-dev",
         "libsqlite3-dev",
