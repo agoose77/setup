@@ -101,7 +101,7 @@ def detect_changed_files(directory):
 
 #  Installers ##########################################################################################################
 def install_pip():
-    return check_output(["sudo", "apt", "install", "python3-pip"])
+    return check_output(["sudo", "apt", "install", "-y", "python3-pip"])
 
 
 def install_plumbum():
@@ -118,7 +118,7 @@ def _make_sudo_in(text):
 
 
 def install_with_apt(*packages):
-    return (cmd.sudo[cmd.apt[("install", *packages)]] << "\n")()
+    return (cmd.sudo[cmd.apt[("install", "-y", *packages)]] << "\n")()
 
 
 def install_with_pip(*packages):
@@ -148,7 +148,7 @@ def update_path(*components):
 
 def append_init_scripts(*scripts):
     zshrc_contents = ZSHRC_PATH.read_text()
-    if not zsrhc_contents.endswith("\n"):
+    if not zshrc_contents.endswith("\n"):
         zshrc_contents += "\n"
     zshrc_contents += '\n'.join(scripts)
     ZSHRC_PATH.write_text(zshrc_contents)
@@ -375,16 +375,19 @@ def install_jupyter(python_version, virtualenv_name):
     # Install npm
     install_with_apt("npm")
 
+    log("Creating virtualenv")
     pyenv_root = local.env.home / ".pyenv"
     pyenv = local[pyenv_root / "bin" / "pyenv"]
     pyenv("virtualenv", python_version, virtualenv_name)
-
+    
     # Install packages
+    log("Installing jupyter packages with pip")
     virtualenv_bin = pyenv_root / "versions" / virtualenv_name / "bin"
     pip = local[virtualenv_bin / "pip"]
     pip("install", "jupyter", "jupyterlab", "numba", "scipy", "numpy", "matplotlib", "ipympl", "numpy-html", "jupytex", "bqplot")
 
     # Install labextensions
+    log("Installing lab extensions")
     jupyter = local[virtualenv_bin / "jupyter"]
     jupyter("labextension", "install", "@jupyter-widgets/jupyterlab-manager")
     jupyter("labextension", "install", "jupyter-matplotlib")
@@ -502,7 +505,7 @@ def install_git(name, email_address, key_length):
 
     cmd.git("config", "--global", "user.email", email_address)
     cmd.git("config", "--global", "user.name", name)
-
+    
     # Create public key and copy to clipboard
     public_key, signing_key = create_gpg_key(name, email_address, key_length)
     (cmd.echo[public_key] | cmd.xclip["-sel", "clip"])()
@@ -841,7 +844,7 @@ if __name__ == "__main__":
     install_atom()
     install_gnome_favourites()
     install_powerline_fonts()
-    install_tex()
-    install_root(VIRTUALENV_NAME, N_BUILD_THREADS, GITHUB_TOKEN)
     install_pandoc(GITHUB_TOKEN)
     install_jetbrains()
+    install_tex()
+    install_root(VIRTUALENV_NAME, N_BUILD_THREADS, GITHUB_TOKEN)
