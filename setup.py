@@ -296,8 +296,8 @@ def install_pyenv_sys_python():
     """
     Install the system Python into Pyenv by symlinking directory structure
     """
+    install_with_apt("python3-venv")
     from sys import version_info
-
     pyenv_versions_dir = local.env.home / ".pyenv" / "versions"
 
     short_ver = f"{version_info.major}.{version_info.minor}"
