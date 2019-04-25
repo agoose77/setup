@@ -113,16 +113,19 @@ def install_plumbum():
     return output
 
 
-def _make_sudo_in(text):
-    return f"{password}\n{text}"
-
-
 def install_with_apt(*packages):
     return (cmd.sudo[cmd.apt[("install", "-y", *packages)]] << "\n")()
 
 
 def install_with_pip(*packages):
     return check_output([sys.executable, "-m", "pip", "install", *packages])
+
+
+def install_with_snap(*packages, classic=False):
+    if classic:
+        packages.append("--classic")
+
+    (cmd.sudo[cmd.snap[("install", *packages)]] << "\n")()
 
 
 def install_powerline_fonts():
@@ -150,9 +153,9 @@ def append_init_scripts(*scripts):
     zshrc_contents = ZSHRC_PATH.read_text()
     if not zshrc_contents.endswith("\n"):
         zshrc_contents += "\n"
-    zshrc_contents += '\n'.join(scripts)
+    zshrc_contents += "\n".join(scripts)
     ZSHRC_PATH.write_text(zshrc_contents)
-    
+
 
 def install_zsh(theme="agnoster"):
     install_with_apt("zsh")
@@ -227,10 +230,6 @@ def install_gnome_theme():
     cmd.google_chrome("https://extensions.gnome.org/extension/19/user-themes/")
 
 
-def install_mailspring():
-    (cmd.sudo[cmd.snap["install", "mailspring"]] << "\n")()
-
-
 def install_pandoc(github_token: str):
     query = """
 {
@@ -291,13 +290,14 @@ def install_tex():
     if path_component is not None:
         update_path(path_component)
 
-	
+
 def install_pyenv_sys_python():
     """
     Install the system Python into Pyenv by symlinking directory structure
     """
     install_with_apt("python3-venv")
     from sys import version_info
+
     pyenv_versions_dir = local.env.home / ".pyenv" / "versions"
 
     short_ver = f"{version_info.major}.{version_info.minor}"
@@ -335,7 +335,8 @@ def install_pyenv_sys_python():
         cmd.ln("-s", "/usr/bin/python${short_ver}m-config")
 
         cmd.ln("-s", "/usr/bin/python3-config")
-        cmd.ln("-s", "/usr/bin/python-config")	
+        cmd.ln("-s", "/usr/bin/python-config")
+
 
 def install_pyenv(python_version):
     """
@@ -345,24 +346,24 @@ def install_pyenv(python_version):
     """
     # Install pyenv
     (
-            cmd.wget[
-                "-O",
-                "-",
-                "https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer",
-            ]
-            | cmd.bash
+        cmd.wget[
+            "-O",
+            "-",
+            "https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer",
+        ]
+        | cmd.bash
     )()
     update_path("$HOME/.pyenv/bin")
 
     # Add init scripts
-    append_init_scripts("eval \"$(pyenv init -)\"", 
-    					"eval \"$(pyenv virtualenv-init -)\"")
+    append_init_scripts('eval "$(pyenv init -)"', 'eval "$(pyenv virtualenv-init -)"')
 
     # Install a particular interpreter (from source)
     pyenv = local[local.env.home / ".pyenv" / "bin" / "pyenv"]
     pyenv["install", python_version].with_env(PYTHON_CONFIGURE_OPTS="--enable-shared")()
 
     install_pyenv_sys_python()
+
 
 def install_jupyter(python_version, virtualenv_name):
     """
@@ -379,12 +380,24 @@ def install_jupyter(python_version, virtualenv_name):
     pyenv_root = local.env.home / ".pyenv"
     pyenv = local[pyenv_root / "bin" / "pyenv"]
     pyenv("virtualenv", python_version, virtualenv_name)
-    
+
     # Install packages
     log("Installing jupyter packages with pip")
     virtualenv_bin = pyenv_root / "versions" / virtualenv_name / "bin"
     pip = local[virtualenv_bin / "pip"]
-    pip("install", "jupyter", "jupyterlab", "numba", "scipy", "numpy", "matplotlib", "ipympl", "numpy-html", "jupytex", "bqplot")
+    pip(
+        "install",
+        "jupyter",
+        "jupyterlab",
+        "numba",
+        "scipy",
+        "numpy",
+        "matplotlib",
+        "ipympl",
+        "numpy-html",
+        "jupytex",
+        "bqplot",
+    )
 
     # Install labextensions
     log("Installing lab extensions")
@@ -395,11 +408,8 @@ def install_jupyter(python_version, virtualenv_name):
     jupyter("labextension", "install", "@agoose77/jupyterlab-markup")
     jupyter("labextension", "install", "@telamonian/theme-darcula")
     jupyter("labextension", "install", "@jupyterlab/katex-extension")
-        
+
     append_init_scripts('alias jl="jupyter lab"')
-        
-def install_spotify():
-    cmd.sudo[cmd.snap["install", "spotify"]]()
 
 
 def install_micro():
@@ -407,7 +417,7 @@ def install_micro():
     Install the micro editor
     :return:
     """
-    cmd.sudo[cmd.snap["install", "micro", "--classic"]]()
+    install_with_snap("micro", classic=True)
 
     # Set default editor in ZSH
     uncommented = re.sub(
@@ -424,22 +434,26 @@ def install_keyboard_shortcuts():
     custom_bindings = [
         ("Screenshot area with Flameshot", "flameshot gui", "Print"),
         ("Spotify", "spotify", "<Super>s"),
-
         # Make custom bindings for audio to avoid overwriting defaults
         *(
-            (name, f"xdotool key --clearmodifiers {key}", binding) for name, key, binding in
+            (name, f"xdotool key --clearmodifiers {key}", binding)
+            for name, key, binding in
             # Create "xdotool" command for each key in the following
-            [("Next", "XF86AudioNext", "<Alt><Super>Right"),
-             ("Previous", "XF86AudioPrev", "<Alt><Super>Left"),
-             ("Play/pause", "XF86AudioPlay", "<Alt><Super>Space"),
-             ("Volume up", "XF86AudioRaiseVolume", "<Alt><Super>Up"),
-             ("Volume down", "XF86AudioLowerVolume", "<Alt><Super>Down")]
-        )
+            [
+                ("Next", "XF86AudioNext", "<Alt><Super>Right"),
+                ("Previous", "XF86AudioPrev", "<Alt><Super>Left"),
+                ("Play/pause", "XF86AudioPlay", "<Alt><Super>Space"),
+                ("Volume up", "XF86AudioRaiseVolume", "<Alt><Super>Up"),
+                ("Volume down", "XF86AudioLowerVolume", "<Alt><Super>Down"),
+            ]
+        ),
     ]
 
     media_settings_path = "org.gnome.settings-daemon.plugins.media-keys"
-    custom_binding_paths = [f"/{media_settings_path.replace('.', '/')}/custom-keybindings/custom{i}/"
-                            for i in range(len(custom_bindings))]
+    custom_binding_paths = [
+        f"/{media_settings_path.replace('.', '/')}/custom-keybindings/custom{i}/"
+        for i in range(len(custom_bindings))
+    ]
 
     # Set normal keybindings
     bindings = {
@@ -452,33 +466,39 @@ def install_keyboard_shortcuts():
     }
 
     for name, binding in bindings.items():
-        cmd.gsettings(
-            "set", media_settings_path, name, repr(binding)
-        )
+        cmd.gsettings("set", media_settings_path, name, repr(binding))
 
     # Set custom keybindings
     for path, (name, command, binding) in zip(custom_binding_paths, custom_bindings):
-        cmd.gsettings("set", f"{media_settings_path}.custom-keybinding:{path}", "name", repr(name))
-        cmd.gsettings("set", f"{media_settings_path}.custom-keybinding:{path}", "command", repr(command))
-        cmd.gsettings("set", f"{media_settings_path}.custom-keybinding:{path}", "binding", repr(binding))
-
-
-def install_atom():
-    cmd.sudo[cmd.snap["install", "--classic", "atom"]]()
+        cmd.gsettings(
+            "set", f"{media_settings_path}.custom-keybinding:{path}", "name", repr(name)
+        )
+        cmd.gsettings(
+            "set",
+            f"{media_settings_path}.custom-keybinding:{path}",
+            "command",
+            repr(command),
+        )
+        cmd.gsettings(
+            "set",
+            f"{media_settings_path}.custom-keybinding:{path}",
+            "binding",
+            repr(binding),
+        )
 
 
 def install_gnome_favourites():
     favourites = [
-        'google-chrome.desktop', 
-        'org.gnome.Nautilus.desktop', 
-        'org.gnome.Terminal.desktop', 
-        'mailspring_mailspring.desktop', 
-        'pycharm-professional_pycharm-professional.desktop', 
-        'clion_clion.desktop', 
-        'webstorm_webstorm.desktop', 
-        'spotify_spotify.desktop', 
-        'atom_atom.desktop', 
-        'org.gnome.Evince.desktop'
+        "google-chrome.desktop",
+        "org.gnome.Nautilus.desktop",
+        "org.gnome.Terminal.desktop",
+        "mailspring_mailspring.desktop",
+        "pycharm-professional_pycharm-professional.desktop",
+        "clion_clion.desktop",
+        "webstorm_webstorm.desktop",
+        "spotify_spotify.desktop",
+        "atom_atom.desktop",
+        "org.gnome.Evince.desktop",
     ]
 
     cmd.gsettings("set", "org.gnome.shell", "favorite-apps", str(favourites))
@@ -494,8 +514,8 @@ def create_gpg_key(name, email_address, key_length):
     log("Generating GPG key")
     key = gpg.gen_key(input_data)
     log("Exporting GPG key")
-    key_data = next(k for k in gpg.list_keys() if k['fingerprint'] == str(key))
-    signing_key = key_data['keyid']
+    key_data = next(k for k in gpg.list_keys() if k["fingerprint"] == str(key))
+    signing_key = key_data["keyid"]
     return gpg.export_keys(signing_key), signing_key
 
 
@@ -505,7 +525,7 @@ def install_git(name, email_address, key_length):
 
     cmd.git("config", "--global", "user.email", email_address)
     cmd.git("config", "--global", "user.name", name)
-    
+
     # Create public key and copy to clipboard
     public_key, signing_key = create_gpg_key(name, email_address, key_length)
     (cmd.echo[public_key] | cmd.xclip["-sel", "clip"])()
@@ -523,10 +543,12 @@ def install_git(name, email_address, key_length):
 default-cache-ttl 28800
 max-cache-ttl 28800"""
     )
-    
-    append_init_scripts("# GPG signing\nexport GPG_TTY=$(tty)",
-                        "alias tasks='git grep -EI \"TODO|FIXME\"'",
-                        "alias ts=\"tasks\"")
+
+    append_init_scripts(
+        "# GPG signing\nexport GPG_TTY=$(tty)",
+        "alias tasks='git grep -EI \"TODO|FIXME\"'",
+        'alias ts="tasks"',
+    )
 
 
 def make_or_find_sources_dir():
@@ -577,7 +599,7 @@ def execute_github_graphql_query(token: str, query: str) -> dict:
 def validate_github_token(token: str) -> str:
     """
     Test GitHub token to ensure it is valid.
-    
+
     :param token: GitHub personal access token
     :return: GitHub personal access token
     """
@@ -733,15 +755,9 @@ def install_root(virtualenv_name: str, n_threads: int, github_token: str):
 
             # Run checkinstall
             cmd.sudo[cmd.checkinstall] & plumbum.FG
-                        
-	# Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
+
+    # Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
     ZSHRC_PATH.write_text(". thisroot.sh\n" + ZSHRC_PATH.read_text())
-
-
-def install_jetbrains():
-    (cmd.sudo[cmd.snap["install", "pycharm-professional", "--classic"]] << "\n")()
-    (cmd.sudo[cmd.snap["install", "clion", "--classic"]] << "\n")()
-    (cmd.sudo[cmd.snap["install", "webstorm", "--classic"]] << "\n")()
 
 
 def bootstrap():
@@ -827,24 +843,25 @@ if __name__ == "__main__":
         "libffi-dev",
         "libsqlite3-dev",
         "xclip",
-	"libbz2-dev"
+        "libbz2-dev",
     )
     install_chrome()
     install_git(GIT_USER_NAME, GIT_EMAIL_ADDRESS, GIT_KEY_LENGTH)
     install_zsh()
     install_pyenv(PYTHON_VERSION)
     install_jupyter(PYTHON_VERSION, VIRTUALENV_NAME)
+    install_with_snap("pycharm-professional", "clion", "webstorm", classic=True)
     install_gnome_theme()
     install_gnome_tweak_tool()
     install_canta_theme()
-    install_mailspring()
-    install_spotify()
+    install_with_snap("mailspring")
+    install_with_snap("spotify")
     install_micro()
     install_keyboard_shortcuts()
-    install_atom()
+    install_with_snap("atom", classic=True)
     install_gnome_favourites()
+    install_with_apt("polari")
     install_powerline_fonts()
     install_pandoc(GITHUB_TOKEN)
-    install_jetbrains()
     install_tex()
     install_root(VIRTUALENV_NAME, N_BUILD_THREADS, GITHUB_TOKEN)
