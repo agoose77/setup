@@ -317,6 +317,8 @@ def install_pyenv_sys_python():
     pip = local[venv_path / "bin" / "pip"]
     pip("install", "nbdime", "jupyter", "jupyter-console")
 
+    append_init_scripts('alias ipy="ipython"')
+
     # Setup nbdime as git diff engine
     nbdime = local[venv_path / "bin" / "nbdime"]
     nbdime("config-git", "--enable", "--global")
