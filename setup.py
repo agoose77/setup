@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 from subprocess import check_output
-from typing import NamedTuple, List, Dict
+from typing import NamedTuple, List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -291,26 +291,40 @@ def install_tex():
         update_path(path_component)
 
 
+def get_default_python_version() -> str:
+    from sys import version_info
+    return f"{version_info.major}.{version_info.minor}.{version_info.micro}"
+
+
 def install_pyenv_sys_python():
     """
-    Install the system Python into Pyenv by symlinking directory structure
+    Install the system Python into pyenv's versions directory using venv
     """
     install_with_apt("python3-venv")
-    from sys import version_info
-
-    short_ver = f"{version_info.major}.{version_info.minor}"
-    long_ver = f"{version_info.major}.{version_info.minor}.{version_info.micro}"
 
     # Create venv
-    pyenv_versions_dir = local.env.home / ".pyenv" / "versions"
-    venv_path = pyenv_versions_dir / f"{long_ver}-system"
+    pyenv_root = local.env.home / ".pyenv"
+    pyenv_versions_dir = pyenv_root / "versions"
+    venv_version = f"{get_default_python_version()}-system"
+    venv_path = pyenv_versions_dir / venv_version
     local[sys.executable]("-m", "venv", venv_path, "--system-site-packages")
 
+    # Set as system
+    pyenv = local[pyenv_root / "bin" / "pyenv"]
+    pyenv("global", venv_version)
 
-def install_pyenv(python_version):
+    # Install some utilities
+    pip = local[venv_path / "bin" / "pip"]
+    pip("install", "nbdime", "jupyter", "jupyter-console")
+
+    # Setup nbdime as git diff engine
+    nbdime = local[venv_path / "bin" / "nbdime"]
+    nbdime("config-git", "--enable", "--global")
+
+
+def install_pyenv():
     """
     Install PyEnv for managing Python versions & virtualenvs
-    :param python_version: Python interpreter version string
     :return:
     """
     # Install pyenv
@@ -327,14 +341,10 @@ def install_pyenv(python_version):
     # Add init scripts
     append_init_scripts('eval "$(pyenv init -)"', 'eval "$(pyenv virtualenv-init -)"')
 
-    # Install a particular interpreter (from source)
-    pyenv = local[local.env.home / ".pyenv" / "bin" / "pyenv"]
-    pyenv["install", python_version].with_env(PYTHON_CONFIGURE_OPTS="--enable-shared")()
-
     install_pyenv_sys_python()
 
 
-def install_jupyter(python_version, virtualenv_name):
+def install_development_virtualenv(python_version: str, virtualenv_name: str=None):
     """
     Install Jupyter within a new virtual environment
 
@@ -344,6 +354,15 @@ def install_jupyter(python_version, virtualenv_name):
     """
     # Install npm
     install_with_apt("npm")
+
+    if not python_version:
+        python_version = get_default_python_version()
+        
+    # Install a particular interpreter (from source)
+    if python_version != get_default_python_version():
+        log("Installing Python version")
+        pyenv = local[local.env.home / ".pyenv" / "bin" / "pyenv"]
+        pyenv["install", python_version].with_env(PYTHON_CONFIGURE_OPTS="--enable-shared")()
 
     log("Creating virtualenv")
     pyenv_root = local.env.home / ".pyenv"
@@ -790,8 +809,10 @@ if __name__ == "__main__":
         N_MAX_SYSTEM_THREADS,
         lambda s: convert_number_threads(N_MAX_SYSTEM_THREADS, s),
     )
-    VIRTUALENV_NAME = get_user_input("Enter virtualenv name", "sci")
-    PYTHON_VERSION = get_user_input("Enter Python version string", "miniconda3-latest")
+    print("Development Python virtualenv:")
+    DEVELOPMENT_VIRTUALENV_NAME = get_user_input("Enter virtualenv name", "sci")
+    DEVELOPMENT_PYTHON_VERSION = get_user_input("Enter Python version string", "miniconda3-latest",
+                                                lambda s: s.strip().lower())
     GIT_USER_NAME = get_user_input("Enter git user-name", "Angus Hollands")
     GIT_EMAIL_ADDRESS = get_user_input("Enter git email-address", "goosey15@gmail.com")
     GIT_KEY_LENGTH = get_user_input("Enter git key length", 4096, int)
@@ -817,8 +838,8 @@ if __name__ == "__main__":
     install_chrome()
     install_git(GIT_USER_NAME, GIT_EMAIL_ADDRESS, GIT_KEY_LENGTH)
     install_zsh()
-    install_pyenv(PYTHON_VERSION)
-    install_jupyter(PYTHON_VERSION, VIRTUALENV_NAME)
+    install_pyenv()
+    install_development_virtualenv(DEVELOPMENT_PYTHON_VERSION, DEVELOPMENT_VIRTUALENV_NAME)
     install_with_snap("pycharm-professional", "clion", "webstorm", classic=True)
     install_gnome_theme()
     install_gnome_tweak_tool()
@@ -833,4 +854,4 @@ if __name__ == "__main__":
     install_powerline_fonts()
     install_pandoc(GITHUB_TOKEN)
     install_tex()
-    install_root(VIRTUALENV_NAME, N_BUILD_THREADS, GITHUB_TOKEN)
+    install_root(DEVELOPMENT_VIRTUALENV_NAME, N_BUILD_THREADS, GITHUB_TOKEN)
