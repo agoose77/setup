@@ -298,44 +298,13 @@ def install_pyenv_sys_python():
     install_with_apt("python3-venv")
     from sys import version_info
 
-    pyenv_versions_dir = local.env.home / ".pyenv" / "versions"
-
     short_ver = f"{version_info.major}.{version_info.minor}"
     long_ver = f"{version_info.major}.{version_info.minor}.{version_info.micro}"
 
-    symlink_path = pyenv_versions_dir / f"{long_ver}-system"
-    symlink_path.mkdir()
-
-    # Copy libs
-    lib_path = symlink_path / "lib"
-    lib_path.mkdir()
-    with local.cwd(lib_path):
-        cmd.ln("-s", f"/usr/lib/python{short_ver}")
-
-    # Copy include
-    include_path = symlink_path / "include"
-    include_path.mkdir()
-    with local.cwd(include_path):
-        cmd.ln("-s", f"/usr/include/python{short_ver}m")
-
-    bin_path = symlink_path / "bin"
-    bin_path.mkdir()
-
-    with local.cwd(bin_path):
-        cmd.ln("-s", "/usr/bin/pip3")
-        cmd.ln("-s", "/usr/bin/pip3 pip")
-        cmd.ln("-s", "/usr/bin/pip3", f"pip{short_ver}")
-
-        cmd.ln("-s", f"/usr/bin/python{short_ver}", "python")
-        cmd.ln("-s", f"/usr/bin/python{short_ver}", "python3")
-        cmd.ln("-s", f"/usr/bin/python{short_ver}")
-        cmd.ln("-s", f"/usr/bin/python{short_ver}m")
-
-        cmd.ln("-s", "/usr/bin/python${short_ver}-config")
-        cmd.ln("-s", "/usr/bin/python${short_ver}m-config")
-
-        cmd.ln("-s", "/usr/bin/python3-config")
-        cmd.ln("-s", "/usr/bin/python-config")
+    # Create venv
+    pyenv_versions_dir = local.env.home / ".pyenv" / "versions"
+    venv_path = pyenv_versions_dir / f"{long_ver}-system"
+    local[sys.executable]("-m", "venv", venv_path, "--system-site-packages")
 
 
 def install_pyenv(python_version):
