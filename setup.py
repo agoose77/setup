@@ -935,7 +935,8 @@ def install_root(
             ]()
 
             # Run checkinstall
-            cmd.sudo[cmd.checkinstall] & plumbum.FG
+            root_version = tag.name.replace("v", "").replace("-", ".")
+            cmd.sudo[cmd.checkinstall["--pkg-version", root_version]] & plumbum.FG
 
     # Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
     ZSHRC_PATH.write_text(
