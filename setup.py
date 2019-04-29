@@ -769,7 +769,7 @@ def find_latest_github_tag(
 
     query_template = """{
           repository(owner:"$owner", name: "$name") {
-            refs(refPrefix: "refs/tags/", first: 1, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
+            refs(refPrefix: "refs/tags/", first: 1, orderBy: {field: ALPHABETICAL, direction: DESC}) {
               edges {
                 node {
                   name
