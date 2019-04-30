@@ -233,7 +233,7 @@ def install_exa(github_token: str):
 alias xa='exa'
 alias ls='exa'
 alias lt='exa --tree'
-alias lg='exa --git -hl
+alias lg='exa --git -hl'
 alias l='exa -al'
 alias ll='exa -l'
 alias lll='exa -l | less'
