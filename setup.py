@@ -1,13 +1,13 @@
+import json
 import logging
 import os
 import re
 import sys
-import json
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 from subprocess import check_output
-from typing import NamedTuple, List, Dict, Optional
+from typing import NamedTuple, List, Dict
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -15,9 +15,7 @@ logger.setLevel(logging.INFO)
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
 
-formatter = logging.Formatter(
-    "{prefix}{message}", style="{"
-)
+formatter = logging.Formatter("{prefix}{message}", style="{")
 ch.setFormatter(formatter)
 
 logger.addHandler(ch)
@@ -75,9 +73,7 @@ def installer(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         arg_strings = [repr(a) for a in args]
-        kwarg_strings = [
-            f"{k}={v!r}" for k, v in kwargs.items()
-        ]
+        kwarg_strings = [f"{k}={v!r}" for k, v in kwargs.items()]
         func_string = f"{func.__name__}({', '.join([*arg_strings, *kwarg_strings])})"
 
         log(f"Running {func_string}")
@@ -85,10 +81,7 @@ def installer(func):
             try:
                 result = func(*args, **kwargs)
             except Exception:
-                log(
-                    f"Execution of {func_string} failed",
-                    level=logging.ERROR,
-                )
+                log(f"Execution of {func_string} failed", level=logging.ERROR)
                 raise
 
         log(f"Finished {func_string}")
@@ -108,15 +101,11 @@ def detect_changed_files(directory):
 
 #  Installers ##########################################################################################################
 def install_pip():
-    return check_output(
-        ["sudo", "apt", "install", "-y", "python3-pip"]
-    )
+    return check_output(["sudo", "apt", "install", "-y", "python3-pip"])
 
 
 def install_plumbum():
-    output = check_output(
-        [sys.executable, "-m", "pip", "install", "plumbum"]
-    )
+    output = check_output([sys.executable, "-m", "pip", "install", "plumbum"])
 
     import site
 
@@ -125,16 +114,11 @@ def install_plumbum():
 
 
 def install_with_apt(*packages):
-    return (
-        cmd.sudo[cmd.apt[("install", "-y", *packages)]]
-        << "\n"
-    )()
+    return (cmd.sudo[cmd.apt[("install", "-y", *packages)]] << "\n")()
 
 
 def install_with_pip(*packages):
-    return check_output(
-        [sys.executable, "-m", "pip", "install", *packages]
-    )
+    return check_output([sys.executable, "-m", "pip", "install", *packages])
 
 
 def install_with_snap(*packages, classic=False):
@@ -146,10 +130,7 @@ def install_with_snap(*packages, classic=False):
 
 def install_powerline_fonts():
     with local.cwd("/tmp"):
-        cmd.git(
-            "clone",
-            "https://github.com/powerline/fonts.git",
-        )
+        cmd.git("clone", "https://github.com/powerline/fonts.git")
         with local.cwd(local.cwd / "fonts"):
             local[local.cwd / "install.sh"]()
 
@@ -165,9 +146,7 @@ def update_path(*components):
                 path.insert(0, component)
         return f'export PATH="{":".join(path)}"'
 
-    ZSHRC_PATH.write_text(
-        re.sub('export PATH="(.*)"', replacer, contents)
-    )
+    ZSHRC_PATH.write_text(re.sub('export PATH="(.*)"', replacer, contents))
 
 
 def append_init_scripts(*scripts):
@@ -187,15 +166,11 @@ def install_zsh(theme="agnoster"):
 
     # Update ZSHRC theme
     zshrc_contents = re.sub(
-        'ZSH_THEME=".*"',
-        rf'ZSH_THEME="{theme}"',
-        ZSHRC_PATH.read_text(),
+        'ZSH_THEME=".*"', rf'ZSH_THEME="{theme}"', ZSHRC_PATH.read_text()
     )
 
     # Enable PATH variable
-    zshrc_contents = re.sub(
-        r"# (export PATH.*)", "$1", zshrc_contents
-    )
+    zshrc_contents = re.sub(r"# (export PATH.*)", "$1", zshrc_contents)
     zshrc_contents = f"""
 # Hide prompt
 DEFAULT_USER=`whoami`
@@ -205,9 +180,7 @@ DEFAULT_USER=`whoami`
     ZSHRC_PATH.write_text(zshrc_contents)
 
     # Add useful paths to PATH
-    update_path(
-        "$HOME/.local/bin", "$HOME/bin", "/usr/local/bin"
-    )
+    update_path("$HOME/.local/bin", "$HOME/bin", "/usr/local/bin")
 
     # Fix sourcing profile in ZSH
     ZPROFILE_PATH.write_text(
@@ -215,12 +188,62 @@ DEFAULT_USER=`whoami`
     )
 
 
+def install_exa(github_token: str):
+    query = """
+{
+  repository(owner: "ogham", name: "exa") {
+    releases(first: 1, orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes {
+        name
+        releaseAssets(first: 10) {
+          nodes{
+            name
+            contentType
+            downloadUrl
+          }
+        }
+      }
+    }
+  }
+}
+  """
+    result = execute_github_graphql_query(github_token, query)
+    release, = result["data"]["repository"]["releases"]["nodes"]
+    asset_nodes = release["releaseAssets"]["nodes"]
+    url = next(
+        n["downloadUrl"]
+        for n in asset_nodes
+        if "linux" in n["name"] and n["name"].endswith(".zip")
+    )
+    with local.cwd("/tmp"):
+        with detect_changed_files(local.cwd) as changed_files:
+            cmd.wget(url)
+        zip_path, = changed_files
+
+        with detect_changed_files(local.cwd) as changed_files:
+            cmd.unzip(zip_path)
+
+        bin_path, = changed_files
+        dest_path = local.env.home / ".local" / "bin" / "exa"
+        cmd.mv(bin_path, dest_path)
+
+    # Setup aliases
+    append_init_scripts("""
+# Exa aliases
+alias xa='exa'
+alias ls='exa'
+alias lt='exa --tree'
+alias lg='exa --git -hl
+alias l='exa -al'
+alias ll='exa -l'
+alias lll='exa -l | less'
+""")
+
+
 def install_chrome():
     deb_name = "google-chrome-stable_current_amd64.deb"
     with local.cwd("/tmp"):
-        cmd.wget(
-            f"https://dl.google.com/linux/direct/{deb_name}"
-        )
+        cmd.wget(f"https://dl.google.com/linux/direct/{deb_name}")
         cmd.sudo[cmd.dpkg["-i", deb_name]]()
 
 
@@ -234,37 +257,21 @@ def install_canta_theme():
     install_numix_theme()
 
     with local.cwd("/tmp"):
-        cmd.git(
-            "clone",
-            "https://github.com/vinceliuice/Canta-theme.git",
-        )
+        cmd.git("clone", "https://github.com/vinceliuice/Canta-theme.git")
         with local.cwd("Canta-theme"):
             local[local.cwd / "install.sh"]("-i")
 
+    cmd.gsettings("set", "org.gnome.desktop.interface", "icon-theme", "Canta")
     cmd.gsettings(
-        "set",
-        "org.gnome.desktop.interface",
-        "icon-theme",
-        "Canta",
-    )
-    cmd.gsettings(
-        "set",
-        "org.gnome.desktop.interface",
-        "gtk-theme",
-        "Canta-dark-compact",
+        "set", "org.gnome.desktop.interface", "gtk-theme", "Canta-dark-compact"
     )
     cmd.dconf(
-        "write",
-        "/org/gnome/shell/extensions/user-theme/name",
-        "'Canta-dark-compact'",
+        "write", "/org/gnome/shell/extensions/user-theme/name", "'Canta-dark-compact'"
     )
 
 
 def install_gnome_tweak_tool():
-    (
-        cmd.sudo[cmd.apt["install", "gnome-tweak-tool"]]
-        << "\n"
-    )()
+    (cmd.sudo[cmd.apt["install", "gnome-tweak-tool"]] << "\n")()
 
 
 def install_gnome_theme():
@@ -272,9 +279,7 @@ def install_gnome_theme():
     cmd.google_chrome(
         "https://chrome.google.com/webstore/detail/gnome-shell-integration/gphhapmejobijbbhgpjhcjognlahblep?utm_source=inline-install-disabled"
     )
-    cmd.google_chrome(
-        "https://extensions.gnome.org/extension/19/user-themes/"
-    )
+    cmd.google_chrome("https://extensions.gnome.org/extension/19/user-themes/")
 
 
 def install_pandoc(github_token: str):
@@ -296,26 +301,18 @@ def install_pandoc(github_token: str):
   }
 }
   """
-    result = execute_github_graphql_query(
-        github_token, query
-    )
-    release, = result["data"]["repository"]["releases"][
-        "nodes"
-    ]
+    result = execute_github_graphql_query(github_token, query)
+    release, = result["data"]["repository"]["releases"]["nodes"]
 
     deb_url = next(
         n["downloadUrl"]
         for n in release["releaseAssets"]["nodes"]
         if n["name"].endswith(".deb")
     )
-    log(
-        f"Found {release['name']}, downloading deb from {deb_url}"
-    )
+    log(f"Found {release['name']}, downloading deb from {deb_url}")
 
     with local.cwd("/tmp"):
-        with detect_changed_files(
-            local.cwd
-        ) as changed_files:
+        with detect_changed_files(local.cwd) as changed_files:
             cmd.aria2c(deb_url, "-j", "10", "-x", "10")
         deb_path, = changed_files
         install_with_apt(deb_path)
@@ -323,27 +320,16 @@ def install_pandoc(github_token: str):
 
 def install_tex():
     with local.cwd("/tmp"):
-        cmd.wget(
-            "mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz"
-        )
+        cmd.wget("mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz")
         cmd.tar("-xvf", "install-tl-unx.tar.gz")
 
-        directory = next(
-            (
-                p
-                for p in (local.cwd // "install-tl*")
-                if p.is_dir()
-            )
-        )
+        directory = next((p for p in (local.cwd // "install-tl*") if p.is_dir()))
 
         path_component = None
         pattern = re.compile(r"Most importantly, add (.*)")
 
         with local.cwd(directory):
-            proc = (
-                cmd.sudo[local[local.cwd / "install-tl"]]
-                << "I\n"
-            ).popen()
+            proc = (cmd.sudo[local[local.cwd / "install-tl"]] << "I\n").popen()
             for out, err in proc:
                 if err:
                     log(err, logging.ERROR)
@@ -374,9 +360,7 @@ def install_pyenv_sys_python():
     pyenv_versions_dir = pyenv_root / "versions"
     venv_version = f"{get_default_python_version()}-system"
     venv_path = pyenv_versions_dir / venv_version
-    local[sys.executable](
-        "-m", "venv", venv_path, "--system-site-packages"
-    )
+    local[sys.executable]("-m", "venv", venv_path, "--system-site-packages")
 
     # Set as system
     pyenv = local[pyenv_root / "bin" / "pyenv"]
@@ -410,17 +394,12 @@ def install_pyenv():
     update_path("$HOME/.pyenv/bin")
 
     # Add init scripts
-    append_init_scripts(
-        'eval "$(pyenv init -)"',
-        'eval "$(pyenv virtualenv-init -)"',
-    )
+    append_init_scripts('eval "$(pyenv init -)"', 'eval "$(pyenv virtualenv-init -)"')
 
     install_pyenv_sys_python()
 
 
-def install_development_virtualenv(
-    python_version: str, virtualenv_name: str = None
-):
+def install_development_virtualenv(python_version: str, virtualenv_name: str = None):
     """
     Install Jupyter within a new virtual environment
 
@@ -437,9 +416,7 @@ def install_development_virtualenv(
     # Install a particular interpreter (from source)
     if python_version != get_default_python_version():
         log("Installing Python version")
-        pyenv = local[
-            local.env.home / ".pyenv" / "bin" / "pyenv"
-        ]
+        pyenv = local[local.env.home / ".pyenv" / "bin" / "pyenv"]
         pyenv["install", python_version].with_env(
             PYTHON_CONFIGURE_OPTS="--enable-shared"
         )()
@@ -451,9 +428,7 @@ def install_development_virtualenv(
 
     # Install packages
     log("Installing jupyter packages with pip")
-    virtualenv_bin = (
-        pyenv_root / "versions" / virtualenv_name / "bin"
-    )
+    virtualenv_bin = pyenv_root / "versions" / virtualenv_name / "bin"
     pip = local[virtualenv_bin / "pip"]
     pip(
         "install",
@@ -499,63 +474,31 @@ def install_micro():
         lambda m: m.lastgroup.replace("# ", ""),
         ZSHRC_PATH.read_text(),
     )
-    ZSHRC_PATH.write_text(
-        re.sub("(EDITOR=).*", r"\1'micro'", uncommented)
-    )
+    ZSHRC_PATH.write_text(re.sub("(EDITOR=).*", r"\1'micro'", uncommented))
 
 
 def install_keyboard_shortcuts():
     install_with_apt("xdotool")
 
     custom_bindings = [
-        (
-            "Screenshot area with Flameshot",
-            "flameshot gui",
-            "Print",
-        ),
+        ("Screenshot area with Flameshot", "flameshot gui", "Print"),
         ("Spotify", "spotify", "<Super>s"),
         # Make custom bindings for audio to avoid overwriting defaults
         *(
-            (
-                name,
-                f"xdotool key --clearmodifiers {key}",
-                binding,
-            )
+            (name, f"xdotool key --clearmodifiers {key}", binding)
             for name, key, binding in
             # Create "xdotool" command for each key in the following
             [
-                (
-                    "Next",
-                    "XF86AudioNext",
-                    "<Alt><Super>Right",
-                ),
-                (
-                    "Previous",
-                    "XF86AudioPrev",
-                    "<Alt><Super>Left",
-                ),
-                (
-                    "Play/pause",
-                    "XF86AudioPlay",
-                    "<Alt><Super>Space",
-                ),
-                (
-                    "Volume up",
-                    "XF86AudioRaiseVolume",
-                    "<Alt><Super>Up",
-                ),
-                (
-                    "Volume down",
-                    "XF86AudioLowerVolume",
-                    "<Alt><Super>Down",
-                ),
+                ("Next", "XF86AudioNext", "<Alt><Super>Right"),
+                ("Previous", "XF86AudioPrev", "<Alt><Super>Left"),
+                ("Play/pause", "XF86AudioPlay", "<Alt><Super>Space"),
+                ("Volume up", "XF86AudioRaiseVolume", "<Alt><Super>Up"),
+                ("Volume down", "XF86AudioLowerVolume", "<Alt><Super>Down"),
             ]
         ),
     ]
 
-    media_settings_path = (
-        "org.gnome.settings-daemon.plugins.media-keys"
-    )
+    media_settings_path = "org.gnome.settings-daemon.plugins.media-keys"
     custom_binding_paths = [
         f"/{media_settings_path.replace('.', '/')}/custom-keybindings/custom{i}/"
         for i in range(len(custom_bindings))
@@ -572,19 +515,12 @@ def install_keyboard_shortcuts():
     }
 
     for name, binding in bindings.items():
-        cmd.gsettings(
-            "set", media_settings_path, name, repr(binding)
-        )
+        cmd.gsettings("set", media_settings_path, name, repr(binding))
 
     # Set custom keybindings
-    for path, (name, command, binding) in zip(
-        custom_binding_paths, custom_bindings
-    ):
+    for path, (name, command, binding) in zip(custom_binding_paths, custom_bindings):
         cmd.gsettings(
-            "set",
-            f"{media_settings_path}.custom-keybinding:{path}",
-            "name",
-            repr(name),
+            "set", f"{media_settings_path}.custom-keybinding:{path}", "name", repr(name)
         )
         cmd.gsettings(
             "set",
@@ -614,12 +550,7 @@ def install_gnome_favourites():
         "org.gnome.Evince.desktop",
     ]
 
-    cmd.gsettings(
-        "set",
-        "org.gnome.shell",
-        "favorite-apps",
-        str(favourites),
-    )
+    cmd.gsettings("set", "org.gnome.shell", "favorite-apps", str(favourites))
 
 
 def create_gpg_key(name, email_address, key_length):
@@ -627,19 +558,12 @@ def create_gpg_key(name, email_address, key_length):
 
     gpg = gnupg.GPG(homedir=str(GPG_HOME_PATH))
     input_data = gpg.gen_key_input(
-        key_type="RSA",
-        key_length=key_length,
-        name_real=name,
-        name_email=email_address,
+        key_type="RSA", key_length=key_length, name_real=name, name_email=email_address
     )
     log("Generating GPG key")
     key = gpg.gen_key(input_data)
     log("Exporting GPG key")
-    key_data = next(
-        k
-        for k in gpg.list_keys()
-        if k["fingerprint"] == str(key)
-    )
+    key_data = next(k for k in gpg.list_keys() if k["fingerprint"] == str(key))
     signing_key = key_data["keyid"]
     return gpg.export_keys(signing_key), signing_key
 
@@ -648,23 +572,17 @@ def install_git(name, email_address, key_length):
     install_with_apt("git", "gnupg")
     install_with_pip("gnupg")
 
-    cmd.git(
-        "config", "--global", "user.email", email_address
-    )
+    cmd.git("config", "--global", "user.email", email_address)
     cmd.git("config", "--global", "user.name", name)
 
     # Create public key and copy to clipboard
-    public_key, signing_key = create_gpg_key(
-        name, email_address, key_length
-    )
+    public_key, signing_key = create_gpg_key(name, email_address, key_length)
     (cmd.echo[public_key] | cmd.xclip["-sel", "clip"])()
 
     # Add key to github
     cmd.google_chrome("https://github.com/settings/gpg/new")
     cmd.git("config", "--global", "commit.gpgsign", "true")
-    cmd.git(
-        "config", "--global", "user.signingkey", signing_key
-    )
+    cmd.git("config", "--global", "user.signingkey", signing_key)
 
     agent_path = GPG_HOME_PATH / "gpg-agent.conf"
     agent_path.touch()
@@ -697,18 +615,13 @@ def graphql_errors_to_string(errors):
     messages = []
     for error in errors:
         locations = [
-            f'(line {p["line"]}, column {p["column"]})'
-            for p in error["locations"]
+            f'(line {p["line"]}, column {p["column"]})' for p in error["locations"]
         ]
-        messages.append(
-            f'{error["message"]} on {", ".join(locations)}'
-        )
+        messages.append(f'{error["message"]} on {", ".join(locations)}')
     return "\n".join(messages)
 
 
-def execute_github_graphql_query(
-    token: str, query: str
-) -> dict:
+def execute_github_graphql_query(token: str, query: str) -> dict:
     import urllib.request as request
     import urllib.error as error
 
@@ -723,16 +636,12 @@ def execute_github_graphql_query(
         resp = request.urlopen(req)
     except error.HTTPError as err:
         if err.code == 401:
-            raise TokenInvalidError(
-                f"Token {token!r} was invalid!"
-            ) from err
+            raise TokenInvalidError(f"Token {token!r} was invalid!") from err
         raise
 
     result = json.loads(resp.read())
     if "errors" in result:
-        raise ValueError(
-            graphql_errors_to_string(result["errors"])
-        )
+        raise ValueError(graphql_errors_to_string(result["errors"]))
     return result
 
 
@@ -754,9 +663,7 @@ def validate_github_token(token: str) -> str:
     return token
 
 
-def find_latest_github_tag(
-    token: str, owner: str, name: str
-) -> GitTag:
+def find_latest_github_tag(token: str, owner: str, name: str) -> GitTag:
     """
     Find latest Tag object from GitHub repo using GraphQL
 
@@ -793,9 +700,7 @@ def find_latest_github_tag(
           }
         }
     """
-    query = Template(query_template).substitute(
-        owner=owner, name=name
-    )
+    query = Template(query_template).substitute(owner=owner, name=name)
     result = execute_github_graphql_query(token, query)
 
     edge, = result["data"]["repository"]["refs"]["edges"]
@@ -808,9 +713,7 @@ def find_latest_github_tag(
     return GitTag(name=tag, tarball_url=url)
 
 
-def get_pyenv_sysconfig_data(
-    virtualenv_name: str
-) -> SysconfigData:
+def get_pyenv_sysconfig_data(virtualenv_name: str) -> SysconfigData:
     """
     Return the results of `sysconfig.get_paths()` and `sysconfig.get_config_vars()` from the required virtualenv
     :param virtualenv_name: Name of virtual environment
@@ -825,8 +728,7 @@ def get_pyenv_sysconfig_data(
 
     paths = json.loads(
         env_python(
-            "-c",
-            "import sysconfig, json;print(json.dumps(sysconfig.get_paths()))",
+            "-c", "import sysconfig, json;print(json.dumps(sysconfig.get_paths()))"
         )
     )
     config_vars = json.loads(
@@ -836,14 +738,10 @@ def get_pyenv_sysconfig_data(
         )
     )
 
-    return SysconfigData(
-        paths=paths, config_vars=config_vars
-    )
+    return SysconfigData(paths=paths, config_vars=config_vars)
 
 
-def install_root(
-    virtualenv_name: str, n_threads: int, github_token: str
-):
+def install_root(virtualenv_name: str, n_threads: int, github_token: str):
     """
     Find latest ROOT sources, compile them, and link to the Python virtual environment
     :param virtualenv_name: name of PyEnv environment to link against
@@ -851,27 +749,19 @@ def install_root(
     :param github_token: GitHub personal authentication token
     :return:
     """
-    tag = find_latest_github_tag(
-        github_token, "root-project", "root"
-    )
+    tag = find_latest_github_tag(github_token, "root-project", "root")
     log(f"Downloading root from {tag}")
 
     sources_dir = make_or_find_sources_dir()
     with local.cwd(sources_dir):
         # Download the file
-        with detect_changed_files(
-            local.cwd
-        ) as changed_files:
-            cmd.aria2c(
-                tag.tarball_url, "-j", "10", "-x", "10"
-            )
+        with detect_changed_files(local.cwd) as changed_files:
+            cmd.aria2c(tag.tarball_url, "-j", "10", "-x", "10")
         tar_filename, = changed_files
         assert tar_filename.suffix == ".gz", tar_filename
 
         # Untar the .tar.gz
-        with detect_changed_files(
-            local.cwd
-        ) as changed_files:
+        with detect_changed_files(local.cwd) as changed_files:
             cmd.tar("-zxvf", tar_filename)
         root_dir, = changed_files
         assert root_dir.is_dir(), root_dir
@@ -887,24 +777,13 @@ def install_root(
     )
 
     # Find various paths for virtual environment
-    sysconfig_data = get_pyenv_sysconfig_data(
-        virtualenv_name
-    )
+    sysconfig_data = get_pyenv_sysconfig_data(virtualenv_name)
 
-    lib_dir_path = Path(
-        sysconfig_data.config_vars["LIBDIR"]
-    )
-    python_lib_path = (
-        lib_dir_path
-        / sysconfig_data.config_vars["LDLIBRARY"]
-    )
-    bin_dir_path = Path(
-        sysconfig_data.config_vars["BINDIR"]
-    )
+    lib_dir_path = Path(sysconfig_data.config_vars["LIBDIR"])
+    python_lib_path = lib_dir_path / sysconfig_data.config_vars["LDLIBRARY"]
+    bin_dir_path = Path(sysconfig_data.config_vars["BINDIR"])
     python_bin_path = bin_dir_path / "python"
-    python_include_path = Path(
-        sysconfig_data.paths["include"]
-    )
+    python_include_path = Path(sysconfig_data.paths["include"])
 
     configuration = {
         "PYTHON_INCLUDE_DIR": python_include_path,
@@ -916,32 +795,19 @@ def install_root(
     with local.cwd("/opt"):
         cmd.sudo[cmd.mkdir[root_dir.name]]()
         with local.cwd(root_dir.name):
-            cmake_vars = [
-                f"-D{k}={v}"
-                for k, v in configuration.items()
-            ]
-            cmake = cmd.sudo[
-                cmd.cmake[
-                    (root_dir, "-DPYTHON=ON", *cmake_vars)
-                ]
-            ]
+            cmake_vars = [f"-D{k}={v}" for k, v in configuration.items()]
+            cmake = cmd.sudo[cmd.cmake[(root_dir, "-DPYTHON=ON", *cmake_vars)]]
             print(cmake())
 
             # Run build
-            cmd.sudo[
-                cmd.cmake[
-                    "--build", ".", "--", f"-j{n_threads}"
-                ]
-            ]()
+            cmd.sudo[cmd.cmake["--build", ".", "--", f"-j{n_threads}"]]()
 
             # Run checkinstall
             root_version = tag.name.replace("v", "").replace("-", ".")
             cmd.sudo[cmd.checkinstall["--pkg-version", root_version]] & plumbum.FG
 
     # Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
-    ZSHRC_PATH.write_text(
-        ". thisroot.sh\n" + ZSHRC_PATH.read_text()
-    )
+    ZSHRC_PATH.write_text(". thisroot.sh\n" + ZSHRC_PATH.read_text())
 
 
 def bootstrap():
@@ -953,18 +819,13 @@ def bootstrap():
 NO_DEFAULT = object()
 
 
-def get_user_input(
-    prompt: str, default=NO_DEFAULT, converter=None
-):
+def get_user_input(prompt: str, default=NO_DEFAULT, converter=None):
     """Get the name of the main virtual environment"""
     while True:
         if default is NO_DEFAULT:
             value = input(f"{prompt}: ")
             if not value:
-                log(
-                    f"A value is required! Try again.",
-                    level=logging.ERROR,
-                )
+                log(f"A value is required! Try again.", level=logging.ERROR)
                 continue
         else:
             value = input(f"{prompt} [{default}]: ")
@@ -975,40 +836,30 @@ def get_user_input(
             try:
                 value = converter(value)
             except ValueError:
-                log(
-                    f"Invalid value {value!r}! Try again.",
-                    level=logging.ERROR,
-                )
+                log(f"Invalid value {value!r}! Try again.", level=logging.ERROR)
                 continue
 
         return value
 
 
 def get_max_system_threads() -> int:
-    return int(
-        check_output(
-            ["grep", "-c", "cores", "/proc/cpuinfo"]
-        )
-        .decode()
-        .strip()
-    )
+    return int(check_output(["grep", "-c", "cores", "/proc/cpuinfo"]).decode().strip())
 
 
-def convert_number_threads(
-    n_total_threads: int, n_threads_str: str
-) -> int:
+def convert_number_threads(n_total_threads: int, n_threads_str: str) -> int:
     n_threads = int(n_threads_str)
     if not 0 < n_threads <= n_total_threads:
-        raise ValueError(
-            f"Invalid number of threads {n_threads}!"
-        )
+        raise ValueError(f"Invalid number of threads {n_threads}!")
     return n_threads
 
 
 # Decorate all installer functions
-for name, value in {**globals()}.items():
-    if name.startswith("install_") and callable(value):
-        globals()[name] = installer(value)
+INSTALL_PREFIX = "install_"
+INSTALLERS = {
+    n[len(INSTALL_PREFIX) :]: installer(f)
+    for n, f in globals().items()
+    if n.startswith(INSTALL_PREFIX) and callable(f)
+}
 
 if __name__ == "__main__":
     bootstrap()
@@ -1021,31 +872,18 @@ if __name__ == "__main__":
     N_BUILD_THREADS = get_user_input(
         "Enter number of build threads",
         N_MAX_SYSTEM_THREADS,
-        lambda s: convert_number_threads(
-            N_MAX_SYSTEM_THREADS, s
-        ),
+        lambda s: convert_number_threads(N_MAX_SYSTEM_THREADS, s),
     )
     print("Development Python virtualenv:")
-    DEVELOPMENT_VIRTUALENV_NAME = get_user_input(
-        "Enter virtualenv name", "sci"
-    )
+    DEVELOPMENT_VIRTUALENV_NAME = get_user_input("Enter virtualenv name", "sci")
     DEVELOPMENT_PYTHON_VERSION = get_user_input(
-        "Enter Python version string",
-        "miniconda3-latest",
-        lambda s: s.strip().lower(),
+        "Enter Python version string", "miniconda3-latest", lambda s: s.strip().lower()
     )
-    GIT_USER_NAME = get_user_input(
-        "Enter git user-name", "Angus Hollands"
-    )
-    GIT_EMAIL_ADDRESS = get_user_input(
-        "Enter git email-address", "goosey15@gmail.com"
-    )
-    GIT_KEY_LENGTH = get_user_input(
-        "Enter git key length", 4096, int
-    )
+    GIT_USER_NAME = get_user_input("Enter git user-name", "Angus Hollands")
+    GIT_EMAIL_ADDRESS = get_user_input("Enter git email-address", "goosey15@gmail.com")
+    GIT_KEY_LENGTH = get_user_input("Enter git key length", 4096, int)
     GITHUB_TOKEN = get_user_input(
-        "Enter GitHub personal token",
-        converter=validate_github_token,
+        "Enter GitHub personal token", converter=validate_github_token
     )
     install_with_apt(
         "cmake",
@@ -1064,21 +902,14 @@ if __name__ == "__main__":
         "libbz2-dev",
     )
     install_chrome()
-    install_git(
-        GIT_USER_NAME, GIT_EMAIL_ADDRESS, GIT_KEY_LENGTH
-    )
+    install_git(GIT_USER_NAME, GIT_EMAIL_ADDRESS, GIT_KEY_LENGTH)
     install_zsh()
+    install_exa(GITHUB_TOKEN)
     install_pyenv()
     install_development_virtualenv(
-        DEVELOPMENT_PYTHON_VERSION,
-        DEVELOPMENT_VIRTUALENV_NAME,
+        DEVELOPMENT_PYTHON_VERSION, DEVELOPMENT_VIRTUALENV_NAME
     )
-    install_with_snap(
-        "pycharm-professional",
-        "clion",
-        "webstorm",
-        classic=True,
-    )
+    install_with_snap("pycharm-professional", "clion", "webstorm", classic=True)
     install_gnome_theme()
     install_gnome_tweak_tool()
     install_canta_theme()
@@ -1092,8 +923,4 @@ if __name__ == "__main__":
     install_powerline_fonts()
     install_pandoc(GITHUB_TOKEN)
     install_tex()
-    install_root(
-        DEVELOPMENT_VIRTUALENV_NAME,
-        N_BUILD_THREADS,
-        GITHUB_TOKEN,
-    )
+    install_root(DEVELOPMENT_VIRTUALENV_NAME, N_BUILD_THREADS, GITHUB_TOKEN)
