@@ -240,6 +240,14 @@ alias lll='exa -l | less'
 """)
 
 
+def install_fd():
+    install_with_apt("fd-find")
+    append_init_scripts("""
+# Fd-find alias
+alias fd='fdfind'
+""")
+
+
 def install_chrome():
     deb_name = "google-chrome-stable_current_amd64.deb"
     with local.cwd("/tmp"):
@@ -905,6 +913,7 @@ if __name__ == "__main__":
     install_git(GIT_USER_NAME, GIT_EMAIL_ADDRESS, GIT_KEY_LENGTH)
     install_zsh()
     install_exa(GITHUB_TOKEN)
+    install_fd()
     install_pyenv()
     install_development_virtualenv(
         DEVELOPMENT_PYTHON_VERSION, DEVELOPMENT_VIRTUALENV_NAME
