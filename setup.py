@@ -248,6 +248,35 @@ alias fd='fdfind'
 """)
 
 
+def install_tmux():
+    install_with_apt("tmux")
+    tmux_conf = """
+# Use F1 as modifier
+unbind C-b
+set -g prefix F1
+bind F1 send-prefix
+
+# split panes using h and b
+bind h split-window -h
+bind v split-window -v
+unbind '"'
+unbind %
+
+# switch panes using Alt-arrow without prefix
+bind -n M-Left select-pane -L
+bind -n M-Right select-pane -R
+bind -n M-Up select-pane -U
+bind -n M-Down select-pane -D
+
+# Enable mouse mode (tmux 2.1 and above)
+set -g mouse on
+
+# reload config file (change file location to your the tmux.conf you want to use)
+bind r source-file ~/.tmux.conf
+"""
+    (HOME_PATH / ".tmux.conf").write_text(tmux_conf)
+
+
 def install_chrome():
     deb_name = "google-chrome-stable_current_amd64.deb"
     with local.cwd("/tmp"):
@@ -914,6 +943,7 @@ if __name__ == "__main__":
     install_zsh()
     install_exa(GITHUB_TOKEN)
     install_fd()
+    install_tmux()
     install_pyenv()
     install_development_virtualenv(
         DEVELOPMENT_PYTHON_VERSION, DEVELOPMENT_VIRTUALENV_NAME
