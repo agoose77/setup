@@ -632,8 +632,9 @@ max-cache-ttl 28800"""
 
     append_init_scripts(
         "# GPG signing\nexport GPG_TTY=$(tty)",
-        "alias tasks='git grep -EI \"TODO|FIXME\"'",
-        'alias ts="tasks"',
+        "# TODO tracking",
+        "alias todo='git grep --no-pager  -EI \"TODO|FIXME\"'",
+        "alias td='todo'",
     )
 
 
