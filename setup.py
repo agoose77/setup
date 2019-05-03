@@ -236,7 +236,7 @@ alias lt='exa --tree'
 alias lg='exa --git -hl'
 alias l='exa -al'
 alias ll='exa -l'
-alias lll='exa -l | less'
+alias lll='exa -l --colour=always | less'
 """)
 
 
