@@ -149,12 +149,19 @@ def update_path(*components):
     ZSHRC_PATH.write_text(re.sub('export PATH="(.*)"', replacer, contents))
 
 
-def append_init_scripts(*scripts):
+def append_init_scripts(*scripts: str):
     zshrc_contents = ZSHRC_PATH.read_text()
     if not zshrc_contents.endswith("\n"):
         zshrc_contents += "\n"
     zshrc_contents += "\n".join(scripts)
     ZSHRC_PATH.write_text(zshrc_contents)
+
+
+def prepend_init_scripts(*scripts: str):
+    zshrc_contents = "\n".join(scripts)
+    if not zshrc_contents.endswith("\n"):
+        zshrc_contents += "\n"
+    ZSHRC_PATH.write_text(zshrc_contents+ZSHRC_PATH.read_text())
 
 
 def install_zsh(theme="agnoster"):
@@ -228,7 +235,8 @@ def install_exa(github_token: str):
         cmd.mv(bin_path, dest_path)
 
     # Setup aliases
-    append_init_scripts("""
+    append_init_scripts(
+        """
 # Exa aliases
 alias xa='exa'
 alias ls='exa'
@@ -237,15 +245,18 @@ alias lg='exa --git -hl'
 alias l='exa -al'
 alias ll='exa -l'
 alias lll='exa -l --colour=always | less'
-""")
+"""
+    )
 
 
 def install_fd():
     install_with_apt("fd-find")
-    append_init_scripts("""
+    append_init_scripts(
+        """
 # Fd-find alias
 alias fd='fdfind'
-""")
+"""
+    )
 
 
 def install_tmux():
@@ -412,6 +423,8 @@ def install_pyenv_sys_python():
     # Setup nbdime as git diff engine
     nbdime = local[venv_path / "bin" / "nbdime"]
     nbdime("config-git", "--enable", "--global")
+
+    pip("install", "git+https://github.com/agoose77/makey.git#egg=makey")
 
 
 def install_pyenv():
@@ -713,30 +726,30 @@ def find_latest_github_tag(token: str, owner: str, name: str) -> GitTag:
     from string import Template
 
     query_template = """{
-          repository(owner:"$owner", name: "$name") {
-            refs(refPrefix: "refs/tags/", first: 1, orderBy: {field: ALPHABETICAL, direction: DESC}) {
-              edges {
-                node {
-                  name
-                  target {
-                    __typename
-                    ... on Tag {
+              repository(owner:"$owner", name: "$name") {
+                refs(refPrefix: "refs/tags/", first: 1, orderBy: {field: ALPHABETICAL, direction: DESC}) {
+                  edges {
+                    node {
                       name
                       target {
+                        __typename
+                        ... on Tag {
+                          name
+                          target {
+                            ... on Commit {
+                              tarballUrl
+                            }
+                          }
+                        }
                         ... on Commit {
                           tarballUrl
                         }
                       }
                     }
-                    ... on Commit {
-                      tarballUrl
-                    }
                   }
                 }
               }
             }
-          }
-        }
     """
     query = Template(query_template).substitute(owner=owner, name=name)
     result = execute_github_graphql_query(token, query)
@@ -779,6 +792,22 @@ def get_pyenv_sysconfig_data(virtualenv_name: str) -> SysconfigData:
     return SysconfigData(paths=paths, config_vars=config_vars)
 
 
+def download_and_extract_tar(tarball_url):
+    # Download the file
+    with detect_changed_files(local.cwd) as changed_files:
+        cmd.aria2c(tarball_url, "-j", "10", "-x", "10")
+    tar_filename, = changed_files
+    assert tar_filename.suffix == ".gz", tar_filename
+
+    # Untar the .tar.gz
+    with detect_changed_files(local.cwd) as changed_files:
+        cmd.tar("-zxvf", tar_filename)
+
+    root_dir, = changed_files
+    assert root_dir.is_dir(), root_dir
+    return root_dir
+
+
 def install_root(virtualenv_name: str, n_threads: int, github_token: str):
     """
     Find latest ROOT sources, compile them, and link to the Python virtual environment
@@ -789,20 +818,6 @@ def install_root(virtualenv_name: str, n_threads: int, github_token: str):
     """
     tag = find_latest_github_tag(github_token, "root-project", "root")
     log(f"Downloading root from {tag}")
-
-    sources_dir = make_or_find_sources_dir()
-    with local.cwd(sources_dir):
-        # Download the file
-        with detect_changed_files(local.cwd) as changed_files:
-            cmd.aria2c(tag.tarball_url, "-j", "10", "-x", "10")
-        tar_filename, = changed_files
-        assert tar_filename.suffix == ".gz", tar_filename
-
-        # Untar the .tar.gz
-        with detect_changed_files(local.cwd) as changed_files:
-            cmd.tar("-zxvf", tar_filename)
-        root_dir, = changed_files
-        assert root_dir.is_dir(), root_dir
 
     # Install deps
     install_with_apt(
@@ -823,29 +838,61 @@ def install_root(virtualenv_name: str, n_threads: int, github_token: str):
     python_bin_path = bin_dir_path / "python"
     python_include_path = Path(sysconfig_data.paths["include"])
 
-    configuration = {
-        "PYTHON_INCLUDE_DIR": python_include_path,
-        "PYTHON_LIBRARY": python_lib_path,
-        "PYTHON_EXECUTABLE": python_bin_path,
+    install_from_tag(
+        tag,
+        {
+            "PYTHON_INCLUDE_DIR": python_include_path,
+            "PYTHON_LIBRARY": python_lib_path,
+            "PYTHON_EXECUTABLE": python_bin_path,
+            "DPYTHON": "ON",
+        },
+        {"pkgname": "root"},
+    )
+
+    # Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
+    prepend_init_scripts(". thisroot.sh")
+
+
+def install_geant4(github_token: str, n_threads: int):
+    tag = find_latest_github_tag(github_token, "Geant4", "geant4")
+    install_from_tag(
+        tag, {"DGEANT4_INSTALL_DATA": "ON"}, {"pkgname": "geant4"}, n_threads=n_threads
+    )
+
+    prepend_init_scripts("""
+cd $(dirname $(which geant4.sh))
+. geant4.sh
+cd - > /dev/null""")
+
+
+def install_from_tag(
+    tag: GitTag,
+    config: Dict[str, str] = None,
+    checkinstall_config: Dict[str, str] = None,
+    n_threads: int = None,
+):
+    log(f"Downloading root from {tag}")
+    checkinstall_config = {
+        "pkgversion": tag.name.replace("v", "").replace("-", "."),
+        **checkinstall_config,
     }
 
-    # Install ROOT into opt
+    sources_dir = make_or_find_sources_dir()
+    with local.cwd(sources_dir):
+        root_dir = download_and_extract_tar(tag.tarball_url)
+
     with local.cwd("/opt"):
         cmd.sudo[cmd.mkdir[root_dir.name]]()
         with local.cwd(root_dir.name):
-            cmake_vars = [f"-D{k}={v}" for k, v in configuration.items()]
-            cmake = cmd.sudo[cmd.cmake[(root_dir, "-DPYTHON=ON", *cmake_vars)]]
+            cmake_vars = [f"-D{k}={v}" for k, v in config.items()]
+            if n_threads is not None:
+                cmake_vars.extend(["--build", ".", "--", f"-j{n_threads}"])
+            cmake = cmd.sudo[cmd.cmake[(root_dir, *cmake_vars)]]
             print(cmake())
 
-            # Run build
-            cmd.sudo[cmd.cmake["--build", ".", "--", f"-j{n_threads}"]]()
-
             # Run checkinstall
-            root_version = tag.name.replace("v", "").replace("-", ".")
-            cmd.sudo[cmd.checkinstall["--pkg-version", root_version]] & plumbum.FG
-
-    # Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
-    ZSHRC_PATH.write_text(". thisroot.sh\n" + ZSHRC_PATH.read_text())
+            checkinstall_opts = [f"--{k}={v}" for k, v in checkinstall_config.items()]
+            cmd.sudo[cmd.checkinstall[checkinstall_opts]] & plumbum.FG
 
 
 def bootstrap():
@@ -964,3 +1011,4 @@ if __name__ == "__main__":
     install_pandoc(GITHUB_TOKEN)
     install_tex()
     install_root(DEVELOPMENT_VIRTUALENV_NAME, N_BUILD_THREADS, GITHUB_TOKEN)
+    install_geant4(GITHUB_TOKEN)
