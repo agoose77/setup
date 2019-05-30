@@ -449,7 +449,7 @@ def install_pyenv():
     install_pyenv_sys_python()
 
 
-def install_development_virtualenv(virtualenv_name: str = None):
+def install_development_virtualenv(python_version: str, virtualenv_name: str = None):
     """
     Install Jupyter within a new virtual environment
 
@@ -460,7 +460,16 @@ def install_development_virtualenv(virtualenv_name: str = None):
     # Install npm
     install_with_apt("npm")
 
-    python_version = "miniconda3-latest"
+    if not python_version:
+        python_version = get_default_python_version()
+
+    # Install a particular interpreter (from source)
+    if python_version != get_default_python_version():
+        log("Installing Python version")
+        pyenv = local[local.env.home / ".pyenv" / "bin" / "pyenv"]
+        pyenv["install", python_version].with_env(
+            PYTHON_CONFIGURE_OPTS="--enable-shared"
+        )()
 
     log("Creating virtualenv")
     pyenv_root = local.env.home / ".pyenv"
@@ -470,25 +479,20 @@ def install_development_virtualenv(virtualenv_name: str = None):
     # Install packages
     log("Installing jupyter packages with pip")
     virtualenv_bin = pyenv_root / "versions" / virtualenv_name / "bin"
-
-    # Pip
     pip = local[virtualenv_bin / "pip"]
     pip(
         "install",
         "jupyter",
         "jupyterlab",
+        "numba",
+        "scipy",
+        "numpy",
         "matplotlib",
         "ipympl",
         "numpy-html",
         "jupytex",
         "bqplot",
-        "numba"
     )
-
-    # Conda
-    conda = local[virtualenv_bin / "conda"]
-    conda("install", "scipy", "numpy")
-    conda("install", "-c", "conda-forge", "root")
 
     # Install labextensions
     log("Installing lab extensions")
@@ -504,7 +508,7 @@ def install_development_virtualenv(virtualenv_name: str = None):
         "@jupyterlab/katex-extension",
     )
 
-    append_init_scripts('alias jl="jupyter lab"', 'alias ipy="ipython"')
+    append_init_scripts('alias jl="jupyter lab"')
 
 
 def install_micro():
@@ -804,6 +808,51 @@ def download_and_extract_tar(tarball_url):
     return root_dir
 
 
+def install_root(virtualenv_name: str, n_threads: int, github_token: str):
+    """
+    Find latest ROOT sources, compile them, and link to the Python virtual environment
+    :param virtualenv_name: name of PyEnv environment to link against
+    :param n_threads: number of threads to use for compiling
+    :param github_token: GitHub personal authentication token
+    :return:
+    """
+    tag = find_latest_github_tag(github_token, "root-project", "root")
+    log(f"Downloading root from {tag}")
+
+    # Install deps
+    install_with_apt(
+        "libx11-dev",
+        "libxpm-dev",
+        "libxft-dev",
+        "libxext-dev",
+        "libpng-dev",
+        "libjpeg-dev",
+    )
+
+    # Find various paths for virtual environment
+    sysconfig_data = get_pyenv_sysconfig_data(virtualenv_name)
+
+    lib_dir_path = Path(sysconfig_data.config_vars["LIBDIR"])
+    python_lib_path = lib_dir_path / sysconfig_data.config_vars["LDLIBRARY"]
+    bin_dir_path = Path(sysconfig_data.config_vars["BINDIR"])
+    python_bin_path = bin_dir_path / "python"
+    python_include_path = Path(sysconfig_data.paths["include"])
+
+    install_from_tag(
+        tag,
+        {
+            "PYTHON_INCLUDE_DIR": python_include_path,
+            "PYTHON_LIBRARY": python_lib_path,
+            "PYTHON_EXECUTABLE": python_bin_path,
+            "DPYTHON": "ON",
+        },
+        {"pkgname": "root"},
+    )
+
+    # Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
+    prepend_init_scripts(". thisroot.sh")
+
+
 def install_geant4(github_token: str, n_threads: int):
     tag = find_latest_github_tag(github_token, "Geant4", "geant4")
     install_from_tag(
@@ -912,6 +961,9 @@ if __name__ == "__main__":
     )
     print("Development Python virtualenv:")
     DEVELOPMENT_VIRTUALENV_NAME = get_user_input("Enter virtualenv name", "sci")
+    DEVELOPMENT_PYTHON_VERSION = get_user_input(
+        "Enter Python version string", "miniconda3-latest", lambda s: s.strip().lower()
+    )
     GIT_USER_NAME = get_user_input("Enter git user-name", "Angus Hollands")
     GIT_EMAIL_ADDRESS = get_user_input("Enter git email-address", "goosey15@gmail.com")
     GIT_KEY_LENGTH = get_user_input("Enter git key length", 4096, int)
@@ -941,7 +993,9 @@ if __name__ == "__main__":
     install_fd()
     install_tmux()
     install_pyenv()
-    install_development_virtualenv(DEVELOPMENT_VIRTUALENV_NAME)
+    install_development_virtualenv(
+        DEVELOPMENT_PYTHON_VERSION, DEVELOPMENT_VIRTUALENV_NAME
+    )
     install_with_snap("pycharm-professional", "clion", "webstorm", classic=True)
     install_gnome_theme()
     install_gnome_tweak_tool()
@@ -956,4 +1010,5 @@ if __name__ == "__main__":
     install_powerline_fonts()
     install_pandoc(GITHUB_TOKEN)
     install_tex()
-    install_geant4(GITHUB_TOKEN, N_BUILD_THREADS)
+    install_root(DEVELOPMENT_VIRTUALENV_NAME, N_BUILD_THREADS, GITHUB_TOKEN)
+    install_geant4(GITHUB_TOKEN)
