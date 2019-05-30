@@ -161,7 +161,7 @@ def prepend_init_scripts(*scripts: str):
     zshrc_contents = "\n".join(scripts)
     if not zshrc_contents.endswith("\n"):
         zshrc_contents += "\n"
-    ZSHRC_PATH.write_text(zshrc_contents+ZSHRC_PATH.read_text())
+    ZSHRC_PATH.write_text(zshrc_contents + ZSHRC_PATH.read_text())
 
 
 def install_zsh(theme="agnoster"):
@@ -449,6 +449,13 @@ def install_pyenv():
     install_pyenv_sys_python()
 
 
+def get_pyenv_binary(name: str, virtualenv_name: str):
+    shim_path = local.env.home / ".pyenv" / "shims" / name
+    if not shim_path.exists():
+        raise FileNotFoundError
+    return local[shim_path].with_env(PYENV_VERSION=virtualenv_name)
+
+
 def install_development_virtualenv(python_version: str, virtualenv_name: str = None):
     """
     Install Jupyter within a new virtual environment
@@ -479,20 +486,29 @@ def install_development_virtualenv(python_version: str, virtualenv_name: str = N
     # Install packages
     log("Installing jupyter packages with pip")
     virtualenv_bin = pyenv_root / "versions" / virtualenv_name / "bin"
+
+    # Pip
     pip = local[virtualenv_bin / "pip"]
     pip(
         "install",
         "jupyter",
         "jupyterlab",
-        "numba",
-        "scipy",
-        "numpy",
         "matplotlib",
         "ipympl",
         "numpy-html",
         "jupytex",
         "bqplot",
+        "numba",
     )
+
+    # Conda for scientific libraries
+    conda_path = virtualenv_bin / "conda"
+    if conda_path.exists():
+        conda = local[conda_path]
+        conda("install", "scipy", "numpy")
+
+    else:
+        pip("install", "scipy", "numpy")
 
     # Install labextensions
     log("Installing lab extensions")
@@ -808,7 +824,7 @@ def download_and_extract_tar(tarball_url):
     return root_dir
 
 
-def install_root(virtualenv_name: str, n_threads: int, github_token: str):
+def install_root_from_source(virtualenv_name: str, n_threads: int, github_token: str):
     """
     Find latest ROOT sources, compile them, and link to the Python virtual environment
     :param virtualenv_name: name of PyEnv environment to link against
@@ -847,6 +863,7 @@ def install_root(virtualenv_name: str, n_threads: int, github_token: str):
             "DPYTHON": "ON",
         },
         {"pkgname": "root"},
+        n_threads=n_threads,
     )
 
     # Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
@@ -859,10 +876,12 @@ def install_geant4(github_token: str, n_threads: int):
         tag, {"DGEANT4_INSTALL_DATA": "ON"}, {"pkgname": "geant4"}, n_threads=n_threads
     )
 
-    prepend_init_scripts("""
+    prepend_init_scripts(
+        """
 cd $(dirname $(which geant4.sh))
 . geant4.sh
-cd - > /dev/null""")
+cd - > /dev/null"""
+    )
 
 
 def install_from_tag(
@@ -871,7 +890,7 @@ def install_from_tag(
     checkinstall_config: Dict[str, str] = None,
     n_threads: int = None,
 ):
-    log(f"Downloading root from {tag}")
+    log(f"Installing tag {tag}")
     checkinstall_config = {
         "pkgversion": tag.name.replace("v", "").replace("-", "."),
         **checkinstall_config,
@@ -885,10 +904,12 @@ def install_from_tag(
         cmd.sudo[cmd.mkdir[root_dir.name]]()
         with local.cwd(root_dir.name):
             cmake_vars = [f"-D{k}={v}" for k, v in config.items()]
-            if n_threads is not None:
-                cmake_vars.extend(["--build", ".", "--", f"-j{n_threads}"])
-            cmake = cmd.sudo[cmd.cmake[(root_dir, *cmake_vars)]]
-            print(cmake())
+
+            # CMake
+            cmd.sudo[cmd.cmake[(root_dir, *cmake_vars)]] & plumbum.FG
+
+            # Make
+            cmd.sudo[cmd.make[f"-j{n_threads}"]] & plumbum.FG
 
             # Run checkinstall
             checkinstall_opts = [f"--{k}={v}" for k, v in checkinstall_config.items()]
@@ -938,6 +959,14 @@ def convert_number_threads(n_total_threads: int, n_threads_str: str) -> int:
     return n_threads
 
 
+def get_conda_path(virtualenv_name: str):
+    return local.env.home / ".pyenv" / "versions" / virtualenv_name / "bin" / "conda"
+
+
+def yes_no_to_bool(answer: str) -> bool:
+    return answer.lower().strip() in {"y", "yes", "1"}
+
+
 # Decorate all installer functions
 INSTALL_PREFIX = "install_"
 INSTALLERS = {
@@ -946,30 +975,73 @@ INSTALLERS = {
     if n.startswith(INSTALL_PREFIX) and callable(f)
 }
 
-if __name__ == "__main__":
-    bootstrap()
 
+class Config:
+    def __getattribute__(self, item):
+        value = object.__getattribute__(self, item)
+        if isinstance(value, DeferredValueFactory):
+            value = value()
+            setattr(self, item, value)
+        return value
+
+    def set(self, func):
+        assert callable(func)
+        setattr(self, func.__name__, deferred(func))
+
+
+class DeferredValueFactory:
+    """Wrapper class which represents a deferred configuration value"""
+    def __init__(self, func):
+        self.func = func
+
+    def __call__(self):
+        return self.func()
+
+
+deferred = DeferredValueFactory
+
+
+def deferred_user_input(prompt: str, default=NO_DEFAULT, converter=None):
+    @deferred
+    def user_input():
+        return get_user_input(prompt, default, converter)
+
+    return user_input
+
+
+if __name__ == "__main__":
     import plumbum
     from plumbum import cmd, local
     import plumbum.colors
 
-    N_MAX_SYSTEM_THREADS = get_max_system_threads()
-    N_BUILD_THREADS = get_user_input(
+    # Lazy configuration
+    config = Config()
+    config.N_MAX_SYSTEM_THREADS = get_max_system_threads()
+    config.N_BUILD_THREADS = deferred_user_input(
         "Enter number of build threads",
-        N_MAX_SYSTEM_THREADS,
-        lambda s: convert_number_threads(N_MAX_SYSTEM_THREADS, s),
+        config.N_MAX_SYSTEM_THREADS,
+        lambda s: convert_number_threads(config.N_MAX_SYSTEM_THREADS, s),
     )
-    print("Development Python virtualenv:")
-    DEVELOPMENT_VIRTUALENV_NAME = get_user_input("Enter virtualenv name", "sci")
-    DEVELOPMENT_PYTHON_VERSION = get_user_input(
+    config.DEVELOPMENT_VIRTUALENV_NAME = deferred_user_input(
+        "Enter virtualenv name", "sci"
+    )
+    config.DEVELOPMENT_VIRTUALENV_NAME = deferred_user_input(
+        "Enter virtualenv name", "sci"
+    )
+    config.DEVELOPMENT_PYTHON_VERSION = deferred_user_input(
         "Enter Python version string", "miniconda3-latest", lambda s: s.strip().lower()
     )
-    GIT_USER_NAME = get_user_input("Enter git user-name", "Angus Hollands")
-    GIT_EMAIL_ADDRESS = get_user_input("Enter git email-address", "goosey15@gmail.com")
-    GIT_KEY_LENGTH = get_user_input("Enter git key length", 4096, int)
-    GITHUB_TOKEN = get_user_input(
+    config.GIT_USER_NAME = deferred_user_input("Enter git user-name", "Angus Hollands")
+    config.GIT_EMAIL_ADDRESS = deferred_user_input(
+        "Enter git email-address", "goosey15@gmail.com"
+    )
+    config.GIT_KEY_LENGTH = deferred_user_input("Enter git key length", 4096, int)
+    config.GITHUB_TOKEN = deferred_user_input(
         "Enter GitHub personal token", converter=validate_github_token
     )
+
+    bootstrap()
+
     install_with_apt(
         "cmake",
         "cmake-gui",
@@ -987,14 +1059,14 @@ if __name__ == "__main__":
         "libbz2-dev",
     )
     install_chrome()
-    install_git(GIT_USER_NAME, GIT_EMAIL_ADDRESS, GIT_KEY_LENGTH)
+    install_git(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS, config.GIT_KEY_LENGTH)
     install_zsh()
-    install_exa(GITHUB_TOKEN)
+    install_exa(config.GITHUB_TOKEN)
     install_fd()
     install_tmux()
     install_pyenv()
     install_development_virtualenv(
-        DEVELOPMENT_PYTHON_VERSION, DEVELOPMENT_VIRTUALENV_NAME
+        config.DEVELOPMENT_PYTHON_VERSION, config.DEVELOPMENT_VIRTUALENV_NAME
     )
     install_with_snap("pycharm-professional", "clion", "webstorm", classic=True)
     install_gnome_theme()
@@ -1008,7 +1080,30 @@ if __name__ == "__main__":
     install_gnome_favourites()
     install_with_apt("polari")
     install_powerline_fonts()
-    install_pandoc(GITHUB_TOKEN)
+    install_pandoc(config.GITHUB_TOKEN)
     install_tex()
-    install_root(DEVELOPMENT_VIRTUALENV_NAME, N_BUILD_THREADS, GITHUB_TOKEN)
-    install_geant4(GITHUB_TOKEN)
+
+    # Install ROOT
+    @config.set
+    def CONDA_CMD():
+        try:
+            return get_pyenv_binary("conda", config.DEVELOPMENT_VIRTUALENV_NAME)
+        except FileNotFoundError:
+            return None
+
+    @config.set
+    def USE_CONDA_ROOT():
+        return config.CONDA_CMD and get_user_input(
+            "Use Conda package for ROOT?", "y", yes_no_to_bool
+        )
+
+    if config.USE_CONDA_ROOT:
+        config.CONDA_CMD("install", "-c", "conda-forge", "root")
+    else:
+        install_root_from_source(
+            config.DEVELOPMENT_VIRTUALENV_NAME,
+            config.N_BUILD_THREADS,
+            config.GITHUB_TOKEN,
+        )
+
+    install_geant4(config.GITHUB_TOKEN, config.N_BUILD_THREADS)
