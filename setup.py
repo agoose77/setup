@@ -860,7 +860,8 @@ def install_root_from_source(virtualenv_name: str, n_threads: int, github_token:
             "PYTHON_INCLUDE_DIR": python_include_path,
             "PYTHON_LIBRARY": python_lib_path,
             "PYTHON_EXECUTABLE": python_bin_path,
-            "DPYTHON": "ON",
+            "PYTHON": "ON",
+            "MINUIT2": "ON"
         },
         {"pkgname": "root"},
         n_threads=n_threads,
