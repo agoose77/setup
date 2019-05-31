@@ -861,7 +861,7 @@ def install_root_from_source(virtualenv_name: str, n_threads: int, github_token:
             "PYTHON_LIBRARY": python_lib_path,
             "PYTHON_EXECUTABLE": python_bin_path,
             "PYTHON": "ON",
-            "MINUIT2": "ON"
+            "MINUIT2": "ON",
         },
         {"pkgname": "root"},
         n_threads=n_threads,
@@ -874,7 +874,14 @@ def install_root_from_source(virtualenv_name: str, n_threads: int, github_token:
 def install_geant4(github_token: str, n_threads: int):
     tag = find_latest_github_tag(github_token, "Geant4", "geant4")
     install_from_tag(
-        tag, {"DGEANT4_INSTALL_DATA": "ON"}, {"pkgname": "geant4"}, n_threads=n_threads
+        tag,
+        {
+            "GEANT4_INSTALL_DATA": "ON",
+            "GEANT4_USE_OPENGL_X11": "ON",
+            "GEANT4_USE_GDML": "ON",
+        },
+        {"pkgname": "geant4"},
+        n_threads=n_threads,
     )
 
     prepend_init_scripts(
@@ -992,6 +999,7 @@ class Config:
 
 class DeferredValueFactory:
     """Wrapper class which represents a deferred configuration value"""
+
     def __init__(self, func):
         self.func = func
 
