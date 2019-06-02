@@ -416,9 +416,10 @@ def install_pyenv_sys_python():
 
     # Install some utilities
     pip = local[venv_path / "bin" / "pip"]
-    pip("install", "nbdime", "jupyter", "jupyter-console")
+    pip("install", "nbdime", "jupyter", "jupyterlab", "jupyter-console")
 
-    append_init_scripts('alias ipy="ipython"')
+    append_init_scripts('alias jc="jupyter console"', 
+                        'alias jl="jupyter lab")
 
     # Setup nbdime as git diff engine
     nbdime = local[venv_path / "bin" / "nbdime"]
@@ -523,8 +524,6 @@ def install_development_virtualenv(python_version: str, virtualenv_name: str = N
         "@telamonian/theme-darcula",
         "@jupyterlab/katex-extension",
     )
-
-    append_init_scripts('alias jl="jupyter lab"')
 
 
 def install_micro():
