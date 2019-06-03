@@ -663,6 +663,13 @@ max-cache-ttl 28800"""
         "# TODO tracking",
         "alias todo='git grep --no-pager  -EI \"TODO|FIXME\"'",
         "alias td='todo'",
+"""update(){
+    cd $1
+    git pull
+    cd -
+}
+alias upd='update'
+"""
     )
 
 
