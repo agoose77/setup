@@ -970,21 +970,29 @@ def get_user_input(prompt: str, default=NO_DEFAULT, converter=None):
 
 
 def get_max_system_threads() -> int:
+    """Return the number of threads available on the system."""
     return int(check_output(["grep", "-c", "cores", "/proc/cpuinfo"]).decode().strip())
 
 
 def convert_number_threads(n_total_threads: int, n_threads_str: str) -> int:
+    """Validate and clamp requested number of threads string to those available.
+
+    :param n_total_threads: number of total threads
+    :param n_threads_str: string of requested number of threads
+    :return:
+    """
     n_threads = int(n_threads_str)
     if not 0 < n_threads <= n_total_threads:
         raise ValueError(f"Invalid number of threads {n_threads}!")
     return n_threads
 
 
-def get_conda_path(virtualenv_name: str):
-    return local.env.home / ".pyenv" / "versions" / virtualenv_name / "bin" / "conda"
-
-
 def yes_no_to_bool(answer: str) -> bool:
+    """Convert prompt-like yes/no response to a bool.
+
+    :param answer: yes/no response
+    :return:
+    """
     return answer.lower().strip() in {"y", "yes", "1"}
 
 
@@ -998,6 +1006,10 @@ INSTALLERS = {
 
 
 class Config:
+    """Configuration holder class.
+
+    Defers evaluation of 'Deferred' configuration getters until they are looked up.
+    """
     def __getattribute__(self, item):
         value = object.__getattribute__(self, item)
         if isinstance(value, DeferredValueFactory):
