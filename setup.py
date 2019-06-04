@@ -1113,6 +1113,7 @@ if __name__ == "__main__":
     install_with_snap("atom", classic=True)
     install_gnome_favourites()
     install_with_apt("polari")
+    install_with_apt("fzf")
     install_powerline_fonts()
     install_pandoc(config.GITHUB_TOKEN)
     install_tex()
