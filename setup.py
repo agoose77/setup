@@ -426,7 +426,7 @@ def install_pyenv_sys_python():
     pip("install", "nbdime", "jupyter", "jupyterlab", "jupyter-console")
 
     append_init_scripts('alias jc="jupyter console"', 
-                        'alias jl="jupyter lab")
+                        'alias jl="jupyter lab"')
 
     # Setup nbdime as git diff engine
     nbdime = local[venv_path / "bin" / "nbdime"]
