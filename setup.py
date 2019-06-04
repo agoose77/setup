@@ -184,13 +184,13 @@ def install_zsh(theme="agnoster"):
 # Hide prompt
 DEFAULT_USER=`whoami`
 
-# Contract prompt directory
-prompt_dir() {{
-    prompt_segment blue $CURRENT_FG $(shrink_path -l -t)
-}}
-
 {zshrc_contents}
-    """
+
+# Contract prompt directory
+prompt_dir() {
+    prompt_segment blue $CURRENT_FG $(shrink_path -l -t)
+}
+"""
     ZSHRC_PATH.write_text(zshrc_contents)
 
     # Add useful paths to PATH
