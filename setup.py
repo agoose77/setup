@@ -178,8 +178,8 @@ def install_zsh(theme="agnoster"):
 
     # Enable PATH variable
     zshrc_contents = re.sub(r"# (export PATH.*)", "$1", zshrc_contents)
-    # Enable shrink-path plugin
-    zshrc_contents = re.sub(r"(plugins=\([^\)]+)\)", "$1 shrink-path\)", zshrc_contents)
+    # Enable shrink-path & z plugins
+    zshrc_contents = re.sub(r"(plugins=\([^\)]+)\)", "$1 shrink-path z\)", zshrc_contents)
     zshrc_contents = f"""
 # Hide prompt
 DEFAULT_USER=`whoami`
