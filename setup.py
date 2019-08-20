@@ -222,18 +222,19 @@ def install_exa(github_token: str):
 }
   """
     result = execute_github_graphql_query(github_token, query)
-    release, = result["data"]["repository"]["releases"]["nodes"]
-    asset_nodes = release["releaseAssets"]["nodes"]
+    asset_nodes = next(r["releaseAssets"]["nodes"] for r in result["data"]["repository"]["releases"]["nodes"])
     url = next(
         n["downloadUrl"]
         for n in asset_nodes
         if "linux" in n["name"] and n["name"].endswith(".zip")
     )
     with local.cwd("/tmp"):
+        # Download zip
         with detect_changed_files(local.cwd) as changed_files:
             cmd.wget(url)
         zip_path, = changed_files
 
+        # Unpack zip
         with detect_changed_files(local.cwd) as changed_files:
             cmd.unzip(zip_path)
 
@@ -423,7 +424,7 @@ def install_pyenv_sys_python():
 
     # Install some utilities
     pip = local[venv_path / "bin" / "pip"]
-    pip("install", "nbdime", "jupyter", "jupyterlab", "jupyter-console")
+    pip("install", "nbdime", "jupyter", "jupyterlab", "jupyter-console", "makey")
 
     append_init_scripts('alias jc="jupyter console"', 
                         'alias jl="jupyter lab"')
@@ -431,8 +432,6 @@ def install_pyenv_sys_python():
     # Setup nbdime as git diff engine
     nbdime = local[venv_path / "bin" / "nbdime"]
     nbdime("config-git", "--enable", "--global")
-
-    pip("install", "git+https://github.com/agoose77/makey.git#egg=makey")
 
 
 def install_pyenv():
@@ -685,6 +684,13 @@ def make_or_find_sources_dir():
     if not sources.exists():
         sources.mkdir()
     return sources
+
+
+def make_or_find_libraries_dir():
+    libraries = Path("~/Libraries").expanduser()
+    if not libraries.exists():
+        libraries.mkdir()
+    return libraries
 
 
 class TokenInvalidError(ValueError):
