@@ -179,7 +179,9 @@ def install_zsh(theme="agnoster"):
     # Enable PATH variable
     zshrc_contents = re.sub(r"# (export PATH.*)", "$1", zshrc_contents)
     # Enable shrink-path & z plugins
-    zshrc_contents = re.sub(r"(plugins=\([^\)]+)\)", "$1 shrink-path z\)", zshrc_contents)
+    zshrc_contents = re.sub(
+        r"(plugins=\([^\)]+)\)", "$1 shrink-path z\)", zshrc_contents
+    )
     zshrc_contents = f"""
 # Hide prompt
 DEFAULT_USER=`whoami`
@@ -187,9 +189,9 @@ DEFAULT_USER=`whoami`
 {zshrc_contents}
 
 # Contract prompt directory
-prompt_dir() {
+prompt_dir() {{
     prompt_segment blue $CURRENT_FG $(shrink_path -l -t)
-}
+}}
 """
     ZSHRC_PATH.write_text(zshrc_contents)
 
@@ -222,7 +224,10 @@ def install_exa(github_token: str):
 }
   """
     result = execute_github_graphql_query(github_token, query)
-    asset_nodes = next(r["releaseAssets"]["nodes"] for r in result["data"]["repository"]["releases"]["nodes"])
+    asset_nodes = next(
+        r["releaseAssets"]["nodes"]
+        for r in result["data"]["repository"]["releases"]["nodes"]
+    )
     url = next(
         n["downloadUrl"]
         for n in asset_nodes
@@ -426,8 +431,7 @@ def install_pyenv_sys_python():
     pip = local[venv_path / "bin" / "pip"]
     pip("install", "nbdime", "jupyter", "jupyterlab", "jupyter-console", "makey")
 
-    append_init_scripts('alias jc="jupyter console"', 
-                        'alias jl="jupyter lab"')
+    append_init_scripts('alias jc="jupyter console"', 'alias jl="jupyter lab"')
 
     # Setup nbdime as git diff engine
     nbdime = local[venv_path / "bin" / "nbdime"]
@@ -669,13 +673,13 @@ max-cache-ttl 28800"""
         "# TODO tracking",
         "alias todo='git grep --no-pager  -EI \"TODO|FIXME\"'",
         "alias td='todo'",
-"""update(){
+        """update(){
     cd $1
     git pull
     cd -
 }
 alias upd='update'
-"""
+""",
     )
 
 
@@ -802,29 +806,22 @@ def find_latest_github_tag(token: str, owner: str, name: str) -> GitTag:
 def get_pyenv_sysconfig_data(virtualenv_name: str) -> SysconfigData:
     """
     Return the results of `sysconfig.get_paths()` and `sysconfig.get_config_vars()` from the required virtualenv
+
     :param virtualenv_name: Name of virtual environment
     :return:
     """
-    # Find the virtual environment, and parse the sysconfig object to find the include directory
-    pyenv_root = local.env.home / ".pyenv"
-    env_path = pyenv_root / "versions" / virtualenv_name
-    assert env_path.exists()
+    env_python = get_pyenv_binary("python", virtualenv_name)
 
-    env_python = local[env_path / "bin" / "python"]
-
-    paths = json.loads(
-        env_python(
-            "-c", "import sysconfig, json;print(json.dumps(sysconfig.get_paths()))"
-        )
-    )
-    config_vars = json.loads(
+    result = json.loads(
         env_python(
             "-c",
-            "import sysconfig, json;print(json.dumps(sysconfig.get_config_vars()))",
+            """
+import sysconfig, json
+print(json.dumps({'paths':sysconfig.get_paths(), 'vars':sysconfig.get_config_vars()}))
+            """,
         )
     )
-
-    return SysconfigData(paths=paths, config_vars=config_vars)
+    return SysconfigData(paths=result["paths"], config_vars=result["vars"])
 
 
 def download_and_extract_tar(tarball_url):
@@ -892,6 +889,8 @@ def install_root_from_source(virtualenv_name: str, n_threads: int, github_token:
 
 def install_geant4(github_token: str, n_threads: int):
     tag = find_latest_github_tag(github_token, "Geant4", "geant4")
+    with local.cwd(make_or_find_libraries_dir()):
+        pass
     install_from_tag(
         tag,
         {
@@ -1016,6 +1015,7 @@ class Config:
 
     Defers evaluation of 'Deferred' configuration getters until they are looked up.
     """
+
     def __getattribute__(self, item):
         value = object.__getattribute__(self, item)
         if isinstance(value, DeferredValueFactory):
