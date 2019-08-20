@@ -428,13 +428,13 @@ def install_pyenv_sys_python():
     pyenv("global", venv_version)
 
     # Install some utilities
-    pip = local[venv_path / "bin" / "pip"]
+    pip = get_pyenv_binary("pip", venv_version)
     pip("install", "nbdime", "jupyter", "jupyterlab", "jupyter-console", "makey")
 
     append_init_scripts('alias jc="jupyter console"', 'alias jl="jupyter lab"')
 
     # Setup nbdime as git diff engine
-    nbdime = local[venv_path / "bin" / "nbdime"]
+    nbdime = get_pyenv_binary("nbdime", venv_version)
     nbdime("config-git", "--enable", "--global")
 
 
@@ -481,25 +481,23 @@ def install_development_virtualenv(python_version: str, virtualenv_name: str = N
     if not python_version:
         python_version = get_default_python_version()
 
+    pyenv = local[local.env.home / ".pyenv" / "bin" / "pyenv"]
+
     # Install a particular interpreter (from source)
     if python_version != get_default_python_version():
         log("Installing Python version")
-        pyenv = local[local.env.home / ".pyenv" / "bin" / "pyenv"]
         pyenv["install", python_version].with_env(
             PYTHON_CONFIGURE_OPTS="--enable-shared"
         )()
 
     log("Creating virtualenv")
-    pyenv_root = local.env.home / ".pyenv"
-    pyenv = local[pyenv_root / "bin" / "pyenv"]
     pyenv("virtualenv", python_version, virtualenv_name)
 
     # Install packages
     log("Installing jupyter packages with pip")
-    virtualenv_bin = pyenv_root / "versions" / virtualenv_name / "bin"
 
     # Pip
-    pip = local[virtualenv_bin / "pip"]
+    pip = get_pyenv_binary("pip", virtualenv_name)
     pip(
         "install",
         "jupyter",
@@ -513,17 +511,16 @@ def install_development_virtualenv(python_version: str, virtualenv_name: str = N
     )
 
     # Conda for scientific libraries
-    conda_path = virtualenv_bin / "conda"
-    if conda_path.exists():
-        conda = local[conda_path]
-        conda("install", "scipy", "numpy")
-
-    else:
+    try:
+        conda = get_pyenv_binary("conda", virtualenv_name)
+    except FileNotFoundError:
         pip("install", "scipy", "numpy")
+    else:
+        conda("install", "scipy", "numpy")
 
     # Install labextensions
     log("Installing lab extensions")
-    jupyter = local[virtualenv_bin / "jupyter"]
+    jupyter = get_pyenv_binary("jupyter", virtualenv_name)
     jupyter(
         "labextension",
         "install",
