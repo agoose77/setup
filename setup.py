@@ -700,7 +700,7 @@ def make_or_find_sources_dir():
 
 
 def make_or_find_libraries_dir():
-    libraries = Path("~/Libraries2").expanduser()
+    libraries = Path("~/Libraries").expanduser()
     if not libraries.exists():
         libraries.mkdir()
     return libraries
