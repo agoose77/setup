@@ -449,17 +449,16 @@ def install_pyenv_sys_python(system_venv_name: str):
     # Set as system
     cmd.pyenv("global", system_venv_name)
 
-    # Install some utilities
-    cmd.pip.with_env(PYENV_VERSION=system_venv_name)(
-        "install", "nbdime", "jupyter", "jupyterlab", "jupyter-console", "makey"
-    )
+    with local.env(PYENV_VERSION=system_venv_name):
+        # Install some utilities
+        cmd.pip(
+            "install", "nbdime", "jupyter", "jupyterlab", "jupyter-console", "makey"
+        )
+
+        # Setup nbdime as git diff engine
+        cmd.nbdime("config-git", "--enable", "--global")
 
     append_init_scripts('alias jc="jupyter console"', 'alias jl="jupyter lab"')
-
-    # Setup nbdime as git diff engine
-    cmd.nbdime.with_env(PYENV_VERSION=system_venv_name)(
-        "config-git", "--enable", "--global"
-    )
 
 
 def install_pyenv(system_venv_name: str):
@@ -511,38 +510,39 @@ def install_development_virtualenv(python_version: str, virtualenv_name: str = N
 
     # Install packages
     log("Installing jupyter packages with pip")
-    cmd.pip.with_env(PYENV_VERSION=virtualenv_name)(
-        "install",
-        "jupyter",
-        "jupyterlab",
-        "matplotlib",
-        "ipympl",
-        "numpy-html",
-        "jupytex",
-        "bqplot",
-        "numba",
-    )
+    with local.env(PYENV_VERSION=virtualenv_name):
+        cmd.pip(
+            "install",
+            "jupyter",
+            "jupyterlab",
+            "matplotlib",
+            "ipympl",
+            "numpy-html",
+            "jupytex",
+            "bqplot",
+            "numba",
+        )
 
-    # Conda for scientific libraries
-    try:
-        conda = get_conda(virtualenv_name)
-    except FileNotFoundError:
-        cmd.pip.with_env(PYENV_VERSION=virtualenv_name)("install", "scipy", "numpy")
-    else:
-        conda("install", "scipy", "numpy")
+        # Conda for scientific libraries
+        try:
+            conda = get_conda(virtualenv_name)
+        except FileNotFoundError:
+            cmd.pip("install", "scipy", "numpy")
+        else:
+            conda("install", "scipy", "numpy")
 
-    # Install labextensions
-    log("Installing lab extensions")
-    cmd.jupyter.with_env(PYENV_VERSION=virtualenv_name)(
-        "labextension",
-        "install",
-        "@jupyter-widgets/jupyterlab-manager",
-        "jupyter-matplotlib",
-        "bqplot",
-        "@agoose77/jupyterlab-markup",
-        "@telamonian/theme-darcula",
-        "@jupyterlab/katex-extension",
-    )
+        # Install labextensions
+        log("Installing lab extensions")
+        cmd.jupyter(
+            "labextension",
+            "install",
+            "@jupyter-widgets/jupyterlab-manager",
+            "jupyter-matplotlib",
+            "bqplot",
+            "@agoose77/jupyterlab-markup",
+            "@telamonian/theme-darcula",
+            "@jupyterlab/katex-extension",
+        )
 
 
 def install_micro():
@@ -832,11 +832,15 @@ print(json.dumps({'paths':sysconfig.get_paths(), 'vars':sysconfig.get_config_var
     return SysconfigData(paths=result["paths"], config_vars=result["vars"])
 
 
-def get_conda(virtualenv_name):
+def get_conda(virtualenv_name=None):
     try:
-        shim = cmd.conda.with_env(PYENV_VERSION=virtualenv_name)
+        shim = cmd.conda
     except AttributeError:
         raise FileNotFoundError
+
+    if virtualenv_name is not None:
+        shim = shim.with_env(PYENV_VERSION=virtualenv_name)
+
     if not shim & plumbum.TF:
         raise FileNotFoundError
     return shim
