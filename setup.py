@@ -10,7 +10,7 @@ from subprocess import check_output
 from typing import NamedTuple, List, Dict
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(os.environ.get("LOGLEVEL", "INFO"))
 
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
@@ -24,6 +24,25 @@ HOME_PATH = Path.home()
 ZSHRC_PATH = HOME_PATH / ".zshrc"
 ZPROFILE_PATH = HOME_PATH / ".zprofile"
 GPG_HOME_PATH = HOME_PATH / ".gnupg"
+ROOT_CPACK_PATCH_URL = (
+    "https://gist.github.com/agoose77/80e00a9baf1fb1a23e12c71f45431be9/raw"
+)
+GEANT4_CPACK_PATCH_URL = (
+    "https://gist.github.com/agoose77/fba2fc5504933b7fb2c5b8c3cfd93529/raw"
+)
+
+valid = re.compile(r"[^\s=\(\)%]+=")
+
+
+def reload_plumbum_env():
+    """Reloads `local.env` after re-sourcing .zshrc"""
+    output = cmd.zsh("-c", "source ~/.zshrc && env")
+    env = {
+        k: v
+        for k, v in (l.split("=", 1) for l in output.splitlines() if valid.match(l))
+    }
+    local.env.update(**env)
+    return env
 
 
 class GitTag(NamedTuple):
@@ -101,7 +120,7 @@ def detect_changed_files(directory):
 
 #  Installers ##########################################################################################################
 def install_pip():
-    return check_output(["sudo", "apt", "install", "-y", "python3-pip"])
+    return check_output(["sudo", "apt", "install", "-y", "python3-pip"], shell=False)
 
 
 def install_plumbum():
@@ -147,6 +166,7 @@ def update_path(*components):
         return f'export PATH="{":".join(path)}"'
 
     ZSHRC_PATH.write_text(re.sub('export PATH="(.*)"', replacer, contents))
+    reload_plumbum_env()
 
 
 def append_init_scripts(*scripts: str):
@@ -155,6 +175,7 @@ def append_init_scripts(*scripts: str):
         zshrc_contents += "\n"
     zshrc_contents += "\n".join(scripts)
     ZSHRC_PATH.write_text(zshrc_contents)
+    reload_plumbum_env()
 
 
 def prepend_init_scripts(*scripts: str):
@@ -162,6 +183,7 @@ def prepend_init_scripts(*scripts: str):
     if not zshrc_contents.endswith("\n"):
         zshrc_contents += "\n"
     ZSHRC_PATH.write_text(zshrc_contents + ZSHRC_PATH.read_text())
+    reload_plumbum_env()
 
 
 def install_zsh(theme="agnoster"):
@@ -202,6 +224,8 @@ prompt_dir() {{
     ZPROFILE_PATH.write_text(
         'for file in /etc/profile.d/*.sh; do source "${file}"; done'
     )
+
+    reload_plumbum_env()
 
 
 def install_exa(github_token: str):
@@ -404,13 +428,13 @@ def install_tex():
         update_path(path_component)
 
 
-def get_default_python_version() -> str:
+def get_system_python_version() -> str:
     from sys import version_info
 
     return f"{version_info.major}.{version_info.minor}.{version_info.micro}"
 
 
-def install_pyenv_sys_python():
+def install_pyenv_sys_python(system_venv_name: str):
     """
     Install the system Python into pyenv's versions directory using venv
     """
@@ -419,26 +443,26 @@ def install_pyenv_sys_python():
     # Create venv
     pyenv_root = local.env.home / ".pyenv"
     pyenv_versions_dir = pyenv_root / "versions"
-    venv_version = f"{get_default_python_version()}-system"
-    venv_path = pyenv_versions_dir / venv_version
+    venv_path = pyenv_versions_dir / system_venv_name
     local[sys.executable]("-m", "venv", venv_path, "--system-site-packages")
 
     # Set as system
-    pyenv = local[pyenv_root / "bin" / "pyenv"]
-    pyenv("global", venv_version)
+    cmd.pyenv("global", system_venv_name)
 
     # Install some utilities
-    pip = get_pyenv_binary("pip", venv_version)
-    pip("install", "nbdime", "jupyter", "jupyterlab", "jupyter-console", "makey")
+    cmd.pip.with_env(PYENV_VERSION=system_venv_name)(
+        "install", "nbdime", "jupyter", "jupyterlab", "jupyter-console", "makey"
+    )
 
     append_init_scripts('alias jc="jupyter console"', 'alias jl="jupyter lab"')
 
     # Setup nbdime as git diff engine
-    nbdime = get_pyenv_binary("nbdime", venv_version)
-    nbdime("config-git", "--enable", "--global")
+    cmd.nbdime.with_env(PYENV_VERSION=system_venv_name)(
+        "config-git", "--enable", "--global"
+    )
 
 
-def install_pyenv():
+def install_pyenv(system_venv_name: str):
     """
     Install PyEnv for managing Python versions & virtualenvs
     :return:
@@ -457,14 +481,7 @@ def install_pyenv():
     # Add init scripts
     append_init_scripts('eval "$(pyenv init -)"', 'eval "$(pyenv virtualenv-init -)"')
 
-    install_pyenv_sys_python()
-
-
-def get_pyenv_binary(name: str, virtualenv_name: str):
-    shim_path = local.env.home / ".pyenv" / "shims" / name
-    if not shim_path.exists():
-        raise FileNotFoundError
-    return local[shim_path].with_env(PYENV_VERSION=virtualenv_name)
+    install_pyenv_sys_python(system_venv_name)
 
 
 def install_development_virtualenv(python_version: str, virtualenv_name: str = None):
@@ -479,26 +496,22 @@ def install_development_virtualenv(python_version: str, virtualenv_name: str = N
     install_with_apt("npm")
 
     if not python_version:
-        python_version = get_default_python_version()
-
-    pyenv = local[local.env.home / ".pyenv" / "bin" / "pyenv"]
+        python_version = get_system_python_version()
 
     # Install a particular interpreter (from source)
-    if python_version != get_default_python_version():
+    if python_version != get_system_python_version():
         log("Installing Python version")
-        pyenv["install", python_version].with_env(
+        cmd.pyenv["install", python_version].with_env(
             PYTHON_CONFIGURE_OPTS="--enable-shared"
         )()
 
+    # Create virtualenv
     log("Creating virtualenv")
-    pyenv("virtualenv", python_version, virtualenv_name)
+    cmd.pyenv("virtualenv", python_version, virtualenv_name)
 
     # Install packages
     log("Installing jupyter packages with pip")
-
-    # Pip
-    pip = get_pyenv_binary("pip", virtualenv_name)
-    pip(
+    cmd.pip.with_env(PYENV_VERSION=virtualenv_name)(
         "install",
         "jupyter",
         "jupyterlab",
@@ -512,16 +525,15 @@ def install_development_virtualenv(python_version: str, virtualenv_name: str = N
 
     # Conda for scientific libraries
     try:
-        conda = get_pyenv_binary("conda", virtualenv_name)
+        conda = get_conda(virtualenv_name)
     except FileNotFoundError:
-        pip("install", "scipy", "numpy")
+        cmd.pip.with_env(PYENV_VERSION=virtualenv_name)("install", "scipy", "numpy")
     else:
         conda("install", "scipy", "numpy")
 
     # Install labextensions
     log("Installing lab extensions")
-    jupyter = get_pyenv_binary("jupyter", virtualenv_name)
-    jupyter(
+    cmd.jupyter.with_env(PYENV_VERSION=virtualenv_name)(
         "labextension",
         "install",
         "@jupyter-widgets/jupyterlab-manager",
@@ -688,7 +700,7 @@ def make_or_find_sources_dir():
 
 
 def make_or_find_libraries_dir():
-    libraries = Path("~/Libraries").expanduser()
+    libraries = Path("~/Libraries2").expanduser()
     if not libraries.exists():
         libraries.mkdir()
     return libraries
@@ -761,31 +773,32 @@ def find_latest_github_tag(token: str, owner: str, name: str) -> GitTag:
     """
     from string import Template
 
-    query_template = """{
-              repository(owner:"$owner", name: "$name") {
-                refs(refPrefix: "refs/tags/", first: 1, orderBy: {field: ALPHABETICAL, direction: DESC}) {
-                  edges {
-                    node {
-                      name
-                      target {
-                        __typename
-                        ... on Tag {
-                          name
-                          target {
-                            ... on Commit {
-                              tarballUrl
-                            }
-                          }
-                        }
-                        ... on Commit {
-                          tarballUrl
-                        }
-                      }
+    query_template = """
+{
+    repository(owner:"$owner", name: "$name") {
+        refs(refPrefix: "refs/tags/", first: 1, orderBy: {field: ALPHABETICAL, direction: DESC}) {
+          edges {
+            node {
+              name
+              target {
+                __typename
+                ... on Tag {
+                  name
+                  target {
+                    ... on Commit {
+                      tarballUrl
                     }
                   }
                 }
+                ... on Commit {
+                  tarballUrl
+                }
               }
             }
+          }
+        }
+    }
+}
     """
     query = Template(query_template).substitute(owner=owner, name=name)
     result = execute_github_graphql_query(token, query)
@@ -807,10 +820,8 @@ def get_pyenv_sysconfig_data(virtualenv_name: str) -> SysconfigData:
     :param virtualenv_name: Name of virtual environment
     :return:
     """
-    env_python = get_pyenv_binary("python", virtualenv_name)
-
     result = json.loads(
-        env_python(
+        cmd.python.with_env(PYENV_VERSION=virtualenv_name)(
             "-c",
             """
 import sysconfig, json
@@ -821,20 +832,18 @@ print(json.dumps({'paths':sysconfig.get_paths(), 'vars':sysconfig.get_config_var
     return SysconfigData(paths=result["paths"], config_vars=result["vars"])
 
 
-def download_and_extract_tar(tarball_url):
-    # Download the file
-    with detect_changed_files(local.cwd) as changed_files:
-        cmd.aria2c(tarball_url, "-j", "10", "-x", "10")
-    tar_filename, = changed_files
-    assert tar_filename.suffix == ".gz", tar_filename
+def get_conda(virtualenv_name):
+    try:
+        shim = cmd.conda.with_env(PYENV_VERSION=virtualenv_name)
+    except AttributeError:
+        raise FileNotFoundError
+    if not shim & plumbum.TF:
+        raise FileNotFoundError
+    return shim
 
-    # Untar the .tar.gz
-    with detect_changed_files(local.cwd) as changed_files:
-        cmd.tar("-zxvf", tar_filename)
 
-    root_dir, = changed_files
-    assert root_dir.is_dir(), root_dir
-    return root_dir
+def cmake_options_from_dict(opts):
+    return [f"D{f}={v}" for f, v in opts.items()]
 
 
 def install_root_from_source(virtualenv_name: str, n_threads: int, github_token: str):
@@ -846,7 +855,7 @@ def install_root_from_source(virtualenv_name: str, n_threads: int, github_token:
     :return:
     """
     tag = find_latest_github_tag(github_token, "root-project", "root")
-    log(f"Downloading root from {tag}")
+    log(f"Found latest root {tag.name}")
 
     # Install deps
     install_with_apt(
@@ -867,18 +876,29 @@ def install_root_from_source(virtualenv_name: str, n_threads: int, github_token:
     python_bin_path = bin_dir_path / "python"
     python_include_path = Path(sysconfig_data.paths["include"])
 
-    install_from_tag(
-        tag,
-        {
-            "PYTHON_INCLUDE_DIR": python_include_path,
-            "PYTHON_LIBRARY": python_lib_path,
-            "PYTHON_EXECUTABLE": python_bin_path,
-            "PYTHON": "ON",
-            "MINUIT2": "ON",
-        },
-        {"pkgname": "root"},
-        n_threads=n_threads,
-    )
+    cmake_flags = {
+        "PYTHON_INCLUDE_DIR": python_include_path,
+        "PYTHON_LIBRARY": python_lib_path,
+        "PYTHON_EXECUTABLE": python_bin_path,
+        "PYTHON": "ON",
+        "MINUIT2": "ON",
+    }
+
+    log(f"Installing root {tag}")
+    with local.cwd(make_or_find_libraries_dir()):
+        cmd.makey[
+            (
+                tag.tarball_url,
+                "-j",
+                n_threads,
+                "-p",
+                ROOT_CPACK_PATCH_URL,
+                f"--version={tag.name.replace('v', '').replace('-', '.')}",
+                "--verbose",
+                "--copt",
+                *cmake_options_from_dict(cmake_flags),
+            )
+        ] & plumbum.FG
 
     # Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
     prepend_init_scripts(". thisroot.sh")
@@ -886,57 +906,33 @@ def install_root_from_source(virtualenv_name: str, n_threads: int, github_token:
 
 def install_geant4(github_token: str, n_threads: int):
     tag = find_latest_github_tag(github_token, "Geant4", "geant4")
+    cmake_flags = {
+        "GEANT4_INSTALL_DATA": "ON",
+        "GEANT4_USE_OPENGL_X11": "ON",
+        "GEANT4_USE_GDML": "ON",
+    }
     with local.cwd(make_or_find_libraries_dir()):
-        pass
-    install_from_tag(
-        tag,
-        {
-            "GEANT4_INSTALL_DATA": "ON",
-            "GEANT4_USE_OPENGL_X11": "ON",
-            "GEANT4_USE_GDML": "ON",
-        },
-        {"pkgname": "geant4"},
-        n_threads=n_threads,
-    )
-
+        cmd.makey[
+            (
+                tag.tarball_url,
+                "-j",
+                n_threads,
+                "-p",
+                GEANT4_CPACK_PATCH_URL,
+                "--copt",
+                *cmake_options_from_dict(cmake_flags),
+                "--dflag",
+                # Exclude this path because it's a recursive symlink which causes issues
+                "path-exclude=/usr/local/lib/Geant4-*/Linux-g++/*",
+                "--verbose",
+            )
+        ] & plumbum.FG
     prepend_init_scripts(
         """
 cd $(dirname $(which geant4.sh))
 . geant4.sh
 cd - > /dev/null"""
     )
-
-
-def install_from_tag(
-    tag: GitTag,
-    config: Dict[str, str] = None,
-    checkinstall_config: Dict[str, str] = None,
-    n_threads: int = None,
-):
-    log(f"Installing tag {tag}")
-    checkinstall_config = {
-        "pkgversion": tag.name.replace("v", "").replace("-", "."),
-        **checkinstall_config,
-    }
-
-    sources_dir = make_or_find_sources_dir()
-    with local.cwd(sources_dir):
-        root_dir = download_and_extract_tar(tag.tarball_url)
-
-    with local.cwd("/opt"):
-        cmd.sudo[cmd.mkdir[root_dir.name]]()
-        with local.cwd(root_dir.name):
-            cmake_vars = [f"-D{k}={v}" for k, v in config.items()]
-
-            # CMake
-            cmd.sudo[cmd.cmake[(root_dir, *cmake_vars)]] & plumbum.FG
-
-            # Make
-            cmd.sudo[cmd.make[f"-j{n_threads}"]] & plumbum.FG
-
-            # Run checkinstall
-            checkinstall_opts = [f"--{k}={v}" for k, v in checkinstall_config.items()]
-            cmd.sudo[cmd.checkinstall[checkinstall_opts]] & plumbum.FG
 
 
 def bootstrap():
@@ -999,12 +995,9 @@ def yes_no_to_bool(answer: str) -> bool:
 
 
 # Decorate all installer functions
-INSTALL_PREFIX = "install_"
-INSTALLERS = {
-    n[len(INSTALL_PREFIX) :]: installer(f)
-    for n, f in globals().items()
-    if n.startswith(INSTALL_PREFIX) and callable(f)
-}
+for name, value in {**globals()}.items():
+    if name.startswith("install_") and callable(value):
+        globals()[name] = installer(value)
 
 
 class Config:
@@ -1062,9 +1055,6 @@ if __name__ == "__main__":
     config.DEVELOPMENT_VIRTUALENV_NAME = deferred_user_input(
         "Enter virtualenv name", "sci"
     )
-    config.DEVELOPMENT_VIRTUALENV_NAME = deferred_user_input(
-        "Enter virtualenv name", "sci"
-    )
     config.DEVELOPMENT_PYTHON_VERSION = deferred_user_input(
         "Enter Python version string", "miniconda3-latest", lambda s: s.strip().lower()
     )
@@ -1101,7 +1091,9 @@ if __name__ == "__main__":
     install_exa(config.GITHUB_TOKEN)
     install_fd()
     install_tmux()
-    install_pyenv()
+
+    config.SYSTEM_VENV_NAME = f"{get_system_python_version()}-system"
+    install_pyenv(config.SYSTEM_VENV_NAME)
     install_development_virtualenv(
         config.DEVELOPMENT_PYTHON_VERSION, config.DEVELOPMENT_VIRTUALENV_NAME
     )
@@ -1125,8 +1117,9 @@ if __name__ == "__main__":
     # Install ROOT
     @config.set
     def CONDA_CMD():
+        # If conda is installed at all
         try:
-            return get_pyenv_binary("conda", config.DEVELOPMENT_VIRTUALENV_NAME)
+            return get_conda(config.DEVELOPMENT_VIRTUALENV_NAME)
         except FileNotFoundError:
             return None
 
