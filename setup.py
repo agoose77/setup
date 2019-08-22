@@ -907,7 +907,7 @@ def install_root_from_source(virtualenv_name: str, n_threads: int, github_token:
         ] & plumbum.FG
 
     # Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
-    prepend_init_scripts(". thisroot.sh")
+    prepend_init_scripts(". /opt/root/bin/thisroot.sh")
 
 
 def install_geant4(github_token: str, n_threads: int):
@@ -917,6 +917,9 @@ def install_geant4(github_token: str, n_threads: int):
         "GEANT4_USE_OPENGL_X11": "ON",
         "GEANT4_USE_GDML": "ON",
     }
+
+    install_with_apt("libxerces-c-dev")
+
     with local.cwd(make_or_find_libraries_dir()):
         cmd.makey[
             (
