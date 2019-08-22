@@ -53,6 +53,7 @@ class GitTag(NamedTuple):
 class SysconfigData(NamedTuple):
     paths: List[str]
     config_vars: Dict[str, str]
+    executable: str
 
 
 _depth = 0
@@ -824,12 +825,14 @@ def get_pyenv_sysconfig_data(virtualenv_name: str) -> SysconfigData:
         cmd.python.with_env(PYENV_VERSION=virtualenv_name)(
             "-c",
             """
-import sysconfig, json
-print(json.dumps({'paths':sysconfig.get_paths(), 'vars':sysconfig.get_config_vars()}))
+import sysconfig, json, sys
+print(json.dumps({'paths':sysconfig.get_paths(), 
+                  'config_vars':sysconfig.get_config_vars(),
+                  'executable': sys.executable}))
             """,
         )
     )
-    return SysconfigData(paths=result["paths"], config_vars=result["vars"])
+    return SysconfigData(**result)
 
 
 def get_conda(virtualenv_name=None):
@@ -875,9 +878,8 @@ def install_root_from_source(virtualenv_name: str, n_threads: int, github_token:
     sysconfig_data = get_pyenv_sysconfig_data(virtualenv_name)
 
     lib_dir_path = Path(sysconfig_data.config_vars["LIBDIR"])
+    python_bin_path = Path(sysconfig_data.executable)
     python_lib_path = lib_dir_path / sysconfig_data.config_vars["LDLIBRARY"]
-    bin_dir_path = Path(sysconfig_data.config_vars["BINDIR"])
-    python_bin_path = bin_dir_path / "python"
     python_include_path = Path(sysconfig_data.paths["include"])
 
     cmake_flags = {
@@ -1073,28 +1075,8 @@ if __name__ == "__main__":
 
     bootstrap()
 
-    install_with_apt(
-        "cmake",
-        "cmake-gui",
-        "build-essential",
-        "aria2",
-        "openssh-server",
-        "checkinstall",
-        "htop",
-        "lm-sensors",
-        "flameshot",
-        "libreadline-dev",
-        "libffi-dev",
-        "libsqlite3-dev",
-        "xclip",
-        "libbz2-dev",
-    )
-    install_chrome()
-    install_git(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS, config.GIT_KEY_LENGTH)
-    install_zsh()
-    install_exa(config.GITHUB_TOKEN)
-    install_fd()
-    install_tmux()
+    # Run this to ensure we don't get the virtualenv binaries if this is being run inside a venv
+    reload_plumbum_env()
 
     config.SYSTEM_VENV_NAME = f"{get_system_python_version()}-system"
     install_pyenv(config.SYSTEM_VENV_NAME)
