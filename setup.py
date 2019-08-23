@@ -218,15 +218,13 @@ prompt_dir() {{
 """
     ZSHRC_PATH.write_text(zshrc_contents)
 
-    # Add useful paths to PATH
-    update_path("$HOME/.local/bin", "$HOME/bin", "/usr/local/bin")
-
     # Fix sourcing profile in ZSH
     ZPROFILE_PATH.write_text(
         'for file in /etc/profile.d/*.sh; do source "${file}"; done'
     )
 
-    reload_plumbum_env()
+    # Add useful paths to PATH
+    update_path("$HOME/.local/bin", "$HOME/bin", "/usr/local/bin")
 
 
 def install_exa(github_token: str):
@@ -449,6 +447,9 @@ def install_pyenv_sys_python(system_venv_name: str):
 
     # Set as system
     cmd.pyenv("global", system_venv_name)
+
+    # Produce shims for pip, python (required when they don't exist and we dont call into pyenv init)
+    cmd.pyenv("rehash")
 
     with local.env(PYENV_VERSION=system_venv_name):
         # Install some utilities
