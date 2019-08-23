@@ -128,6 +128,7 @@ def install_plumbum():
     output = check_output([sys.executable, "-m", "pip", "install", "plumbum"])
 
     import site
+
     sys.path.append(site.getusersitepackages())
     return output
 
@@ -652,16 +653,32 @@ def create_gpg_key(name, email_address, key_length):
     return gpg.export_keys(signing_key), signing_key
 
 
-def install_git(name, email_address, key_length):
-    install_with_apt("git", "gnupg")
-    install_with_pip("gnupg")
+def install_git(name, email_address):
+    install_with_apt("git")
 
     cmd.git("config", "--global", "user.email", email_address)
     cmd.git("config", "--global", "user.name", name)
 
+    append_init_scripts(
+        "# TODO tracking",
+        "alias todo='git grep --no-pager  -EI \"TODO|FIXME\"'",
+        "alias td='todo'",
+        """update(){
+    cd $1
+    git pull
+    cd -
+}
+alias upd='update'
+""",
+    )
+
+
+def install_gnupg(name, email_address, key_length):
+    install_with_apt("gnupg")
+    install_with_pip("gnupg")
     # Create public key and copy to clipboard
     public_key, signing_key = create_gpg_key(name, email_address, key_length)
-    (cmd.echo[public_key] | cmd.xclip["-sel", "clip"])()
+    (cmd.echo[public_key] | cmd.xclip["-sel", "clip"]) & plumbum.BG
 
     # Add key to github
     cmd.google_chrome("https://github.com/settings/gpg/new")
@@ -677,19 +694,7 @@ default-cache-ttl 28800
 max-cache-ttl 28800"""
     )
 
-    append_init_scripts(
-        "# GPG signing\nexport GPG_TTY=$(tty)",
-        "# TODO tracking",
-        "alias todo='git grep --no-pager  -EI \"TODO|FIXME\"'",
-        "alias td='todo'",
-        """update(){
-    cd $1
-    git pull
-    cd -
-}
-alias upd='update'
-""",
-    )
+    append_init_scripts("# GPG signing\nexport GPG_TTY=$(tty)")
 
 
 def make_or_find_sources_dir():
@@ -1096,7 +1101,8 @@ if __name__ == "__main__":
         "libbz2-dev",
     )
     install_chrome()
-    install_git(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS, config.GIT_KEY_LENGTH)
+    install_git(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS)
+    install_gnupg(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS, config.GIT_KEY_LENGTH)
     install_zsh()
     install_exa(config.GITHUB_TOKEN)
     install_fd()
