@@ -1101,10 +1101,10 @@ if __name__ == "__main__":
         "xclip",
         "libbz2-dev",
     )
-    install_chrome()
     install_git(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS)
-    install_gnupg(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS, config.GIT_KEY_LENGTH)
     install_zsh()
+    install_chrome()
+    install_gnupg(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS, config.GIT_KEY_LENGTH)
     install_exa(config.GITHUB_TOKEN)
     install_fd()
     install_tmux()
