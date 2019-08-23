@@ -1059,8 +1059,7 @@ def deferred_user_input(prompt: str, default=NO_DEFAULT, converter=None):
     return user_input
 
 
-if __name__ == "__main__":
-    # Lazy configuration
+def create_user_config() -> Config:
     config = Config()
     config.N_MAX_SYSTEM_THREADS = get_max_system_threads()
     config.N_BUILD_THREADS = deferred_user_input(
@@ -1082,7 +1081,22 @@ if __name__ == "__main__":
     config.GITHUB_TOKEN = deferred_user_input(
         "Enter GitHub personal token", converter=validate_github_token
     )
+    config.SYSTEM_VENV_NAME = f"{get_system_python_version()}-system"
+    config.ROOT_USE_CONDA = deferred_user_input(
+        "Use Conda package for ROOT?", "y", yes_no_to_bool
+    )
+    # Install ROOT
+    @config.set
+    def CONDA_CMD():
+        # If conda is installed at all
+        try:
+            return get_conda(config.DEVELOPMENT_VIRTUALENV_NAME)
+        except FileNotFoundError:
+            return None
+    return config
 
+
+def setup(config: Config):
     bootstrap()
 
     install_with_apt(
@@ -1109,7 +1123,6 @@ if __name__ == "__main__":
     install_fd()
     install_tmux()
 
-    config.SYSTEM_VENV_NAME = f"{get_system_python_version()}-system"
     install_pyenv(config.SYSTEM_VENV_NAME)
     install_development_virtualenv(
         config.DEVELOPMENT_PYTHON_VERSION, config.DEVELOPMENT_VIRTUALENV_NAME
@@ -1129,24 +1142,8 @@ if __name__ == "__main__":
     install_with_apt("ripgrep")
     install_powerline_fonts()
     install_pandoc(config.GITHUB_TOKEN)
-    install_tex()
 
-    # Install ROOT
-    @config.set
-    def CONDA_CMD():
-        # If conda is installed at all
-        try:
-            return get_conda(config.DEVELOPMENT_VIRTUALENV_NAME)
-        except FileNotFoundError:
-            return None
-
-    @config.set
-    def USE_CONDA_ROOT():
-        return config.CONDA_CMD and get_user_input(
-            "Use Conda package for ROOT?", "y", yes_no_to_bool
-        )
-
-    if config.USE_CONDA_ROOT:
+    if config.CONDA_CMD and config.ROOT_USE_CONDA:
         config.CONDA_CMD("install", "-c", "conda-forge", "root")
     else:
         install_root_from_source(
@@ -1156,3 +1153,10 @@ if __name__ == "__main__":
         )
 
     install_geant4(config.GITHUB_TOKEN, config.N_BUILD_THREADS)
+    install_tex()
+
+
+if __name__ == "__main__":
+    # Lazy configuration
+    config = create_user_config()
+    setup(config)
