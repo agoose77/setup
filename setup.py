@@ -128,7 +128,6 @@ def install_plumbum():
     output = check_output([sys.executable, "-m", "pip", "install", "plumbum"])
 
     import site
-
     sys.path.append(site.getusersitepackages())
     return output
 
@@ -949,6 +948,12 @@ def bootstrap():
     install_pip()
     install_plumbum()
 
+    # Import modules
+    global plumbum, cmd, local
+    import plumbum
+    from plumbum import cmd, local
+    import plumbum.colors
+
 
 NO_DEFAULT = object()
 
@@ -1049,10 +1054,6 @@ def deferred_user_input(prompt: str, default=NO_DEFAULT, converter=None):
 
 
 if __name__ == "__main__":
-    import plumbum
-    from plumbum import cmd, local
-    import plumbum.colors
-
     # Lazy configuration
     config = Config()
     config.N_MAX_SYSTEM_THREADS = get_max_system_threads()
@@ -1078,8 +1079,28 @@ if __name__ == "__main__":
 
     bootstrap()
 
-    # Run this to ensure we don't get the virtualenv binaries if this is being run inside a venv
-    reload_plumbum_env()
+    install_with_apt(
+        "cmake",
+        "cmake-gui",
+        "build-essential",
+        "aria2",
+        "openssh-server",
+        "checkinstall",
+        "htop",
+        "lm-sensors",
+        "flameshot",
+        "libreadline-dev",
+        "libffi-dev",
+        "libsqlite3-dev",
+        "xclip",
+        "libbz2-dev",
+    )
+    install_chrome()
+    install_git(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS, config.GIT_KEY_LENGTH)
+    install_zsh()
+    install_exa(config.GITHUB_TOKEN)
+    install_fd()
+    install_tmux()
 
     config.SYSTEM_VENV_NAME = f"{get_system_python_version()}-system"
     install_pyenv(config.SYSTEM_VENV_NAME)
