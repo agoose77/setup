@@ -682,8 +682,10 @@ def install_gnupg(name, email_address, key_length):
     public_key, signing_key = create_gpg_key(name, email_address, key_length)
     (cmd.echo[public_key] | cmd.xclip["-sel", "clip"]) & plumbum.BG
 
-    # Add key to github
+    # Add key to GitHub & GitLab
     cmd.google_chrome("https://github.com/settings/gpg/new")
+    cmd.google_chrome("https://gitlab.com/profile/gpg_keys")
+    
     cmd.git("config", "--global", "commit.gpgsign", "true")
     cmd.git("config", "--global", "user.signingkey", signing_key)
 
