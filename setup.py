@@ -143,7 +143,7 @@ def install_with_pip(*packages):
 
 def install_with_snap(*packages, classic=False):
     if classic:
-        packages.append("--classic")
+        packages += ("--classic",)
 
     (cmd.sudo[cmd.snap[("install", *packages)]] << "\n")()
 
@@ -511,8 +511,8 @@ def install_development_virtualenv(python_version: str, virtualenv_name: str = N
     cmd.pyenv("virtualenv", python_version, virtualenv_name)
 
     # Install packages
-    log("Installing jupyter packages with pip")
     with local.env(PYENV_VERSION=virtualenv_name):
+        log("Installing jupyter packages with pip")
         cmd.pip(
             "install",
             "jupyter",
@@ -556,8 +556,8 @@ def install_micro():
 
     # Set default editor in ZSH
     uncommented = re.sub(
-        r"# Preferred editor(?:.|\n)*# fi",
-        lambda m: m.lastgroup.replace("# ", ""),
+        r"(# Preferred editor.*?\n)((?:\s|.)*?fi)",
+        lambda m: m.group(1)+m.group(2).replace("# ", ""),
         ZSHRC_PATH.read_text(),
     )
     ZSHRC_PATH.write_text(re.sub("(EDITOR=).*", r"\1'micro'", uncommented))
@@ -672,6 +672,7 @@ def install_git(name, email_address):
 alias upd='update'
 """,
     )
+    make_or_find_git_dir()
 
 
 def install_gnupg(name, email_address, key_length):
@@ -707,6 +708,13 @@ def make_or_find_sources_dir():
 
 def make_or_find_libraries_dir():
     libraries = Path("~/Libraries").expanduser()
+    if not libraries.exists():
+        libraries.mkdir()
+    return libraries
+
+
+def make_or_find_git_dir():
+    libraries = Path("~/Git").expanduser()
     if not libraries.exists():
         libraries.mkdir()
     return libraries
@@ -1127,7 +1135,8 @@ def setup(config: Config):
     install_development_virtualenv(
         config.DEVELOPMENT_PYTHON_VERSION, config.DEVELOPMENT_VIRTUALENV_NAME
     )
-    install_with_snap("pycharm-professional", "clion", "webstorm", classic=True)
+    for package in "pycharm-professional", "clion", "webstorm":
+        install_with_snap(package, classic=True)
     install_gnome_theme()
     install_gnome_tweak_tool()
     install_canta_theme()
