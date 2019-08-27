@@ -699,6 +699,12 @@ max-cache-ttl 28800"""
     )
 
     append_init_scripts("# GPG signing\nexport GPG_TTY=$(tty)")
+    
+    # Create SSH key
+    cmd.ssh_keygen("-t", "ed25519", "-C", email_address)
+    (cmd.cat["~/.ssh/id_ed25519.pub"] | cmd.xclip["-sel", "clip"])()
+    cmd.google_chrome("https://github.com/settings/ssh/new")
+    cmd.google_chrome("https://gitlab.com/profile/keys")
 
 
 def make_or_find_sources_dir():
