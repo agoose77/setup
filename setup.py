@@ -1156,6 +1156,7 @@ def setup(config: Config):
     install_gnome_favourites()
     install_with_apt("polari")
     install_with_apt("fzf")
+    install_with_snap("gimp")
     install_with_apt("ripgrep")
     install_powerline_fonts()
     install_pandoc(config.GITHUB_TOKEN)
