@@ -655,7 +655,7 @@ def create_gpg_key(name, email_address, key_length):
 
 
 def install_git(name, email_address):
-    install_with_apt("git")
+    install_with_apt("git", "git-lfs")
 
     cmd.git("config", "--global", "user.email", email_address)
     cmd.git("config", "--global", "user.name", name)
