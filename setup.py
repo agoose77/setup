@@ -1155,6 +1155,7 @@ def setup(config: Config):
     install_with_snap("atom", classic=True)
     install_gnome_favourites()
     install_with_apt("polari")
+    install_with_apt("vlc")
     install_with_apt("fzf")
     install_with_snap("gimp")
     install_with_apt("ripgrep")
