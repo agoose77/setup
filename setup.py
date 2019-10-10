@@ -938,8 +938,8 @@ def install_geant4(github_token: str, n_threads: int):
         "GEANT4_USE_OPENGL_X11": "ON",
         "GEANT4_USE_GDML": "ON",
     }
-
-    install_with_apt("libxerces-c-dev")
+    
+    install_with_apt("libxerces-c-dev", "libxmu-dev", "libexpat1-dev", "freeglut3", "freeglut3-dev", "mesa-utils")
 
     with local.cwd(make_or_find_libraries_dir()):
         cmd.makey[
