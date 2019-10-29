@@ -166,11 +166,12 @@ def update_path(*components):
                 path.insert(0, component)
         return f'export PATH="{":".join(path)}"'
 
-    ZSHRC_PATH.write_text(re.sub('export PATH="(.*)"', replacer, contents))
+    ZSHRC_PATH.write_text(re.sub('export PATH="?(.*)"?', replacer, contents))
     reload_plumbum_env()
 
 
 def append_init_scripts(*scripts: str):
+    ZSHRC_PATH.touch()
     zshrc_contents = ZSHRC_PATH.read_text()
     if not zshrc_contents.endswith("\n"):
         zshrc_contents += "\n"
@@ -200,10 +201,10 @@ def install_zsh(theme="agnoster"):
     )
 
     # Enable PATH variable
-    zshrc_contents = re.sub(r"# (export PATH.*)", "$1", zshrc_contents)
+    zshrc_contents = re.sub(r"# (export PATH.*)", r"\1", zshrc_contents)
     # Enable shrink-path & z plugins
     zshrc_contents = re.sub(
-        r"(plugins=\([^\)]+)\)", "$1 shrink-path z\)", zshrc_contents
+        r"(plugins=\([^\)]+)\)", r"\1 shrink-path z)", zshrc_contents
     )
     zshrc_contents = f"""
 # Hide prompt
@@ -571,8 +572,8 @@ def install_keyboard_shortcuts():
         ("Spotify", "spotify", "<Super>s"),
         # Make custom bindings for audio to avoid overwriting defaults
         *(
-            (name, f"xdotool key --clearmodifiers {key}", binding)
-            for name, key, binding in
+            (name, f"xdotool key --clearmodifiers {key}", shortcut)
+            for name, key, shortcut in
             # Create "xdotool" command for each key in the following
             [
                 ("Next", "XF86AudioNext", "<Alt><Super>Right"),
@@ -592,11 +593,11 @@ def install_keyboard_shortcuts():
 
     # Set normal keybindings
     bindings = {
-        "home": "<Super>f",
-        "email": "<Super>e",
-        "terminal": "<Super>t",
-        "www": "<Super>w",
-        "control-center": "<Super>x",
+        "home": ["<Super>f"],
+        "email": ["<Super>e"],
+        "terminal": ["<Super>t"],
+        "www": ["<Super>w"],
+        "control-center": ["<Super>x"],
         "custom-keybindings": custom_binding_paths,
     }
 
@@ -654,24 +655,20 @@ def create_gpg_key(name, email_address, key_length):
     return gpg.export_keys(signing_key), signing_key
 
 
+def install_git_shortcuts():
+    append_init_scripts(
+        "# TODO tracking",
+        "alias todo='git grep --no-pager  -EI \"TODO|FIXME\"'",
+        "alias td='todo'",
+    )
+
+
 def install_git(name, email_address):
     install_with_apt("git", "git-lfs")
 
     cmd.git("config", "--global", "user.email", email_address)
     cmd.git("config", "--global", "user.name", name)
 
-    append_init_scripts(
-        "# TODO tracking",
-        "alias todo='git grep --no-pager  -EI \"TODO|FIXME\"'",
-        "alias td='todo'",
-        """update(){
-    cd $1
-    git pull
-    cd -
-}
-alias upd='update'
-""",
-    )
     make_or_find_git_dir()
 
 
@@ -700,9 +697,11 @@ max-cache-ttl 28800"""
 
     append_init_scripts("# GPG signing\nexport GPG_TTY=$(tty)")
     
+def install_gnupg(name, email_address, key_length):
     # Create SSH key
-    cmd.ssh_keygen("-t", "ed25519", "-C", email_address)
-    (cmd.cat["~/.ssh/id_ed25519.pub"] | cmd.xclip["-sel", "clip"])()
+    ssh_private_key_path = Path("~/.ssh/id_ed25519").expanduser()
+    cmd.ssh_keygen["-t", "ed25519", "-C", email_address] & plumbum.FG
+    (cmd.cat[ssh_private_key_path.with_suffix(".pub")] | cmd.xclip["-sel", "clip"]) & plumbum.BG
     cmd.google_chrome("https://github.com/settings/ssh/new")
     cmd.google_chrome("https://gitlab.com/profile/keys")
 
@@ -1133,6 +1132,7 @@ def setup(config: Config):
     )
     install_git(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS)
     install_zsh()
+    install_git_shortcuts()
     install_chrome()
     install_gnupg(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS, config.GIT_KEY_LENGTH)
     install_exa(config.GITHUB_TOKEN)
