@@ -166,7 +166,7 @@ def update_path(*components):
                 path.insert(0, component)
         return f'export PATH="{":".join(path)}"'
 
-    ZSHRC_PATH.write_text(re.sub('export PATH="?(.*)"?', replacer, contents))
+    ZSHRC_PATH.write_text(re.sub('export PATH="?([^"]*)"?', replacer, contents))
     reload_plumbum_env()
 
 
@@ -269,6 +269,7 @@ def install_exa(github_token: str):
 
         bin_path, = changed_files
         dest_path = local.env.home / ".local" / "bin" / "exa"
+        dest_path.parent.mkdir()
         cmd.mv(bin_path, dest_path)
 
     # Setup aliases
@@ -697,7 +698,6 @@ max-cache-ttl 28800"""
 
     append_init_scripts("# GPG signing\nexport GPG_TTY=$(tty)")
     
-def install_gnupg(name, email_address, key_length):
     # Create SSH key
     ssh_private_key_path = Path("~/.ssh/id_ed25519").expanduser()
     cmd.ssh_keygen["-t", "ed25519", "-C", email_address] & plumbum.FG
