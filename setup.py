@@ -30,7 +30,9 @@ ROOT_CPACK_PATCH_URL = (
 GEANT4_CPACK_PATCH_URL = (
     "https://gist.github.com/agoose77/fba2fc5504933b7fb2c5b8c3cfd93529/raw"
 )
-
+TMUX_CONF_URL = (
+    "https://gist.githubusercontent.com/agoose77/3e3b273cbfdb8a870c97ebb346beef8e/raw"
+)
 valid = re.compile(r"[^\s=\(\)%]+=")
 
 
@@ -204,7 +206,7 @@ def install_zsh(theme="agnoster"):
     zshrc_contents = re.sub(r"# (export PATH.*)", r"\1", zshrc_contents)
     # Enable shrink-path & z plugins
     zshrc_contents = re.sub(
-        r"(plugins=\([^\)]+)\)", r"\1 shrink-path z tmux)", zshrc_contents
+        r"(plugins=\([^\)]+)\)", r"\1 shrink-path z)", zshrc_contents
     )
     zshrc_contents = f"""
 # Hide prompt
@@ -299,31 +301,7 @@ alias fd='fdfind'
 
 def install_tmux():
     install_with_apt("tmux")
-    tmux_conf = """
-# Use F1 as modifier
-unbind C-b
-set -g prefix F1
-bind F1 send-prefix
-
-# split panes using h and b
-bind h split-window -h
-bind v split-window -v
-unbind '"'
-unbind %
-
-# switch panes using Alt-arrow without prefix
-bind -n M-Left select-pane -L
-bind -n M-Right select-pane -R
-bind -n M-Up select-pane -U
-bind -n M-Down select-pane -D
-
-# Enable mouse mode (tmux 2.1 and above)
-set -g mouse on
-
-# reload config file (change file location to your the tmux.conf you want to use)
-bind r source-file ~/.tmux.conf
-"""
-    (HOME_PATH / ".tmux.conf").write_text(tmux_conf)
+    cmd.wget(TMUX_CONF_URL, "-O", HOME_PATH / ".tmux.conf")
 
 
 def install_chrome():
