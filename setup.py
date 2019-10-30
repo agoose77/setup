@@ -166,7 +166,7 @@ def update_path(*components):
                 path.insert(0, component)
         return f'export PATH="{":".join(path)}"'
 
-    ZSHRC_PATH.write_text(re.sub('export PATH="?([^"]*)"?', replacer, contents))
+    ZSHRC_PATH.write_text(re.sub('export PATH="?([^"\n]*)"?', replacer, contents))
     reload_plumbum_env()
 
 
