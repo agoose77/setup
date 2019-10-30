@@ -204,7 +204,7 @@ def install_zsh(theme="agnoster"):
     zshrc_contents = re.sub(r"# (export PATH.*)", r"\1", zshrc_contents)
     # Enable shrink-path & z plugins
     zshrc_contents = re.sub(
-        r"(plugins=\([^\)]+)\)", r"\1 shrink-path z)", zshrc_contents
+        r"(plugins=\([^\)]+)\)", r"\1 shrink-path z tmux)", zshrc_contents
     )
     zshrc_contents = f"""
 # Hide prompt
