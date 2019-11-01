@@ -1128,6 +1128,7 @@ def setup(config: Config):
     install_canta_theme()
     install_with_snap("mailspring")
     install_with_snap("spotify")
+    install_with_snap("mathpix-snipping-tool")
     install_micro()
     install_keyboard_shortcuts()
     install_with_snap("atom", classic=True)
