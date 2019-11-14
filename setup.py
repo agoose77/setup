@@ -223,17 +223,11 @@ def append_zsh_plugins(*plugins: str):
     ZSHRC_PATH.write_text(zshrc_contents)
 
 
-def install_zsh(theme="agnoster"):
+def install_zsh():
     install_with_apt("zsh")
     cmd.sudo[cmd.chsh["-s", cmd.which("zsh").strip()]]()
     os.system(
         'sh -c "$(wget https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh -O -)"'
-    )
-    # Update ZSHRC theme
-    zshrc_contents = re.sub(
-        'ZSH_THEME=".*"',
-        rf'ZSH_THEME="{theme}"',
-        ZSHRC_PATH.read_text(),
     )
     # Enable PATH variable
     zshrc_contents = re.sub(
@@ -241,21 +235,22 @@ def install_zsh(theme="agnoster"):
     )
     ZSHRC_PATH.write_text(zshrc_contents)
 
+    # Update ZSHRC theme
+    zshrc_contents = re.sub(
+        'ZSH_THEME=".*"',
+        rf'ZSH_THEME="{theme}"',
+        ZSHRC_PATH.read_text(),
+    )
+    
     # Fix prompt formatting
     prepend_init_scripts(
         """
 # Hide prompt
 DEFAULT_USER=`whoami`"""
     )
-    append_init_scripts(
-        """
-# Contract prompt directory
-prompt_dir() {{
-    prompt_segment blue $CURRENT_FG $(shrink_path -l -t)
-}}"""
-    )
+    
     # Enable shrink-path & z plugins
-    append_zsh_plugins("shrink-path", "z")
+    append_zsh_plugins("z")
     # Fix sourcing profile in ZSH
     ZPROFILE_PATH.write_text(
         'for file in /etc/profile.d/*.sh; do source "${file}"; done'
@@ -265,7 +260,16 @@ prompt_dir() {{
     update_path(
         "$HOME/.local/bin", "$HOME/bin", "/usr/local/bin"
     )
+    # Install powerlevel10k
+    zsh_custom_dir = cmd.zsh("-ic", "echo $ZSH_CUSTOM").strip()
+    cmd.git("clone", "--depth=1", "https://github.com/romkatv/powerlevel10k.git", f"{zsh_custom_dir}/themes/powerlevel10k")
 
+    # Update ZSHRC theme
+    zshrc_contents = re.sub(
+        'ZSH_THEME=".*"',
+        rf'ZSH_THEME="powerlevel10k/powerlevel10k"',
+        ZSHRC_PATH.read_text(),
+    )
 
 def install_exa(github_token: str):
     query = """
