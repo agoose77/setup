@@ -234,13 +234,6 @@ def install_zsh():
         r"# (export PATH.*)", r"\1", zshrc_contents
     )
     ZSHRC_PATH.write_text(zshrc_contents)
-
-    # Update ZSHRC theme
-    zshrc_contents = re.sub(
-        'ZSH_THEME=".*"',
-        rf'ZSH_THEME="{theme}"',
-        ZSHRC_PATH.read_text(),
-    )
     
     # Fix prompt formatting
     prepend_init_scripts(
