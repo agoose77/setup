@@ -15,9 +15,7 @@ logger.setLevel(os.environ.get("LOGLEVEL", "INFO"))
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
 
-formatter = logging.Formatter(
-    "{prefix}{message}", style="{"
-)
+formatter = logging.Formatter("{prefix}{message}", style="{")
 ch.setFormatter(formatter)
 
 logger.addHandler(ch)
@@ -26,9 +24,15 @@ HOME_PATH = Path.home()
 ZSHRC_PATH = HOME_PATH / ".zshrc"
 ZPROFILE_PATH = HOME_PATH / ".zprofile"
 GPG_HOME_PATH = HOME_PATH / ".gnupg"
-ROOT_CPACK_PATCH_URL = "https://gist.github.com/agoose77/80e00a9baf1fb1a23e12c71f45431be9/raw"
-GEANT4_CPACK_PATCH_URL = "https://gist.github.com/agoose77/fba2fc5504933b7fb2c5b8c3cfd93529/raw"
-TMUX_CONF_URL = "https://gist.githubusercontent.com/agoose77/3e3b273cbfdb8a870c97ebb346beef8e/raw"
+ROOT_CPACK_PATCH_URL = (
+    "https://gist.github.com/agoose77/80e00a9baf1fb1a23e12c71f45431be9/raw"
+)
+GEANT4_CPACK_PATCH_URL = (
+    "https://gist.github.com/agoose77/fba2fc5504933b7fb2c5b8c3cfd93529/raw"
+)
+TMUX_CONF_URL = (
+    "https://gist.githubusercontent.com/agoose77/3e3b273cbfdb8a870c97ebb346beef8e/raw"
+)
 valid = re.compile(r"[^\s=\(\)%]+=")
 
 
@@ -37,11 +41,7 @@ def reload_plumbum_env():
     output = cmd.zsh("-c", "source ~/.zshrc && env")
     env = {
         k: v
-        for k, v in (
-            l.split("=", 1)
-            for l in output.splitlines()
-            if valid.match(l)
-        )
+        for k, v in (l.split("=", 1) for l in output.splitlines() if valid.match(l))
     }
     local.env.update(**env)
     return env
@@ -95,9 +95,7 @@ def installer(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         arg_strings = [repr(a) for a in args]
-        kwarg_strings = [
-            f"{k}={v!r}" for k, v in kwargs.items()
-        ]
+        kwarg_strings = [f"{k}={v!r}" for k, v in kwargs.items()]
         func_string = f"{func.__name__}({', '.join([*arg_strings, *kwarg_strings])})"
 
         log(f"Running {func_string}")
@@ -106,8 +104,7 @@ def installer(func):
                 result = func(*args, **kwargs)
             except Exception:
                 log(
-                    f"Execution of {func_string} failed",
-                    level=logging.ERROR,
+                    f"Execution of {func_string} failed", level=logging.ERROR,
                 )
                 raise
 
@@ -128,16 +125,11 @@ def detect_changed_files(directory):
 
 #  Installers ##########################################################################################################
 def install_pip():
-    return check_output(
-        ["sudo", "apt", "install", "-y", "python3-pip"],
-        shell=False,
-    )
+    return check_output(["sudo", "apt", "install", "-y", "python3-pip"], shell=False,)
 
 
 def install_plumbum():
-    output = check_output(
-        [sys.executable, "-m", "pip", "install", "plumbum"]
-    )
+    output = check_output([sys.executable, "-m", "pip", "install", "plumbum"])
 
     import site
 
@@ -146,16 +138,11 @@ def install_plumbum():
 
 
 def install_with_apt(*packages):
-    return (
-        cmd.sudo[cmd.apt[("install", "-y", *packages)]]
-        << "\n"
-    )()
+    return (cmd.sudo[cmd.apt[("install", "-y", *packages)]] << "\n")()
 
 
 def install_with_pip(*packages):
-    return check_output(
-        [sys.executable, "-m", "pip", "install", *packages]
-    )
+    return check_output([sys.executable, "-m", "pip", "install", *packages])
 
 
 def install_with_snap(*packages, classic=False):
@@ -168,8 +155,7 @@ def install_with_snap(*packages, classic=False):
 def install_powerline_fonts():
     with local.cwd("/tmp"):
         cmd.git(
-            "clone",
-            "https://github.com/powerline/fonts.git",
+            "clone", "https://github.com/powerline/fonts.git",
         )
         with local.cwd(local.cwd / "fonts"):
             local[local.cwd / "install.sh"]()
@@ -186,15 +172,11 @@ def update_path(*components):
                 path.insert(0, component)
         return f'export PATH="{":".join(path)}"'
 
-    ZSHRC_PATH.write_text(
-        re.sub(
-            'export PATH="?([^"\n]*)"?', replacer, contents
-        )
-    )
+    ZSHRC_PATH.write_text(re.sub('export PATH="?([^"\n]*)"?', replacer, contents))
     reload_plumbum_env()
 
 
-def append_init_scripts(*scripts: str):
+def append_to_zshrc(*scripts: str):
     ZSHRC_PATH.touch()
     zshrc_contents = ZSHRC_PATH.read_text()
     if not zshrc_contents.endswith("\n"):
@@ -204,139 +186,124 @@ def append_init_scripts(*scripts: str):
     reload_plumbum_env()
 
 
-def prepend_init_scripts(*scripts: str):
+def prepend_to_zshrc(*scripts: str):
     zshrc_contents = "\n".join(scripts)
     if not zshrc_contents.endswith("\n"):
         zshrc_contents += "\n"
-    ZSHRC_PATH.write_text(
-        zshrc_contents + ZSHRC_PATH.read_text()
-    )
+    ZSHRC_PATH.write_text(zshrc_contents + ZSHRC_PATH.read_text())
     reload_plumbum_env()
-
-
-def append_zsh_plugins(*plugins: str):
-    zshrc_contents = re.sub(
-        r"(plugins=\([^\)]+)\)",
-        r"\1 shrink-path z)",
-        ZSHRC_PATH.read_text(),
-    )
-    ZSHRC_PATH.write_text(zshrc_contents)
 
 
 def install_zsh():
     install_with_apt("zsh")
     cmd.sudo[cmd.chsh["-s", cmd.which("zsh").strip()]]()
-    os.system(
-        'sh -c "$(wget https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh -O -)"'
-    )
     # Enable PATH variable
-    zshrc_contents = re.sub(
-        r"# (export PATH.*)", r"\1", zshrc_contents
-    )
+    zshrc_contents = re.sub(r"# (export PATH.*)", r"\1", ZSHRC_PATH.read_text())
     ZSHRC_PATH.write_text(zshrc_contents)
-    
+
+    # Add useful paths to PATH
+    update_path("$HOME/.local/bin", "$HOME/bin", "/usr/local/bin")
+
     # Fix prompt formatting
-    prepend_init_scripts(
+    prepend_to_zshrc(
         """
 # Hide prompt
 DEFAULT_USER=`whoami`"""
     )
-    
-    # Enable shrink-path & z plugins
-    append_zsh_plugins("z")
+
     # Fix sourcing profile in ZSH
     ZPROFILE_PATH.write_text(
         'for file in /etc/profile.d/*.sh; do source "${file}"; done'
     )
 
-    # Add useful paths to PATH
-    update_path(
-        "$HOME/.local/bin", "$HOME/bin", "/usr/local/bin"
-    )
-    # Install powerlevel10k
-    zsh_custom_dir = cmd.zsh("-ic", "echo $ZSH_CUSTOM").strip()
-    cmd.git("clone", "--depth=1", "https://github.com/romkatv/powerlevel10k.git", f"{zsh_custom_dir}/themes/powerlevel10k")
 
-    # Update ZSHRC theme
-    zshrc_contents = re.sub(
-        'ZSH_THEME=".*"',
-        rf'ZSH_THEME="powerlevel10k/powerlevel10k"',
-        ZSHRC_PATH.read_text(),
+def install_zplugins(loader, *plugins, ices=()):
+    ice_string = f"zplugin ice {' '.join(ices)}\n" if ices else ""
+    plugin_strings = [f"{ice_string}zplugin {loader} {p}" for p in plugins]
+    append_to_zshrc(*plugin_strings)
+
+
+def install_zplugin():
+    # Install zplugin
+    # cmd.sh("-c", cmd.wget("https://raw.githubusercontent.com/zdharma/zplugin/master/doc/install.sh", "-O", "-"))
+
+    # Load required OMZ lib plugins
+    install_zplugins(
+        "snippet",
+        "OMZ::lib/git.zsh",
+        "OMZ::lib/completion.zsh",
+        "OMZ::lib/grep.zsh",
+        "OMZ::lib/directories.zsh",
+        "OMZ::lib/history.zsh",
+        "OMZ::lib/functions.zsh",
+        "OMZ::lib/key-bindings.zsh",
     )
 
-def install_exa(github_token: str):
-    query = """
-{
-  repository(owner: "ogham", name: "exa") {
-    releases(first: 1, orderBy: {field: CREATED_AT, direction: DESC}) {
-      nodes {
-        name
-        releaseAssets(first: 10) {
-          nodes{
-            name
-            contentType
-            downloadUrl
-          }
-        }
-      }
-    }
-  }
-}
-  """
-    result = execute_github_graphql_query(
-        github_token, query
+    # Load non-startup essential OMZ plugins
+    install_zplugins(
+        "snippet", "OMZ::plugins/git/git.plugin.zsh", ices=("wait", "lucid"),
     )
-    asset_nodes = next(
-        r["releaseAssets"]["nodes"]
-        for r in result["data"]["repository"]["releases"][
-            "nodes"
-        ]
+    install_zplugins(
+        "light",
+        "ogham/exa",
+        ices=("wait", "lucid", 'from"gh-r"', 'as"program"', 'mv"exa* -> exa"'),
     )
-    url = next(
-        n["downloadUrl"]
-        for n in asset_nodes
-        if "linux" in n["name"]
-        and n["name"].endswith(".zip")
+    install_zplugins("light", "DarrinTisdale/zsh-aliases-exa", ices=("wait", "lucid"))
+    install_zplugins(
+        "light",
+        "zdharma/fast-syntax-highlighting",
+        ices=("wait", "lucid", 'atinit"zpcompinit; zpcdreplay"'),
     )
-    with local.cwd("/tmp"):
-        # Download zip
-        with detect_changed_files(
-            local.cwd
-        ) as changed_files:
-            cmd.wget(url)
-        (zip_path,) = changed_files
+    append_to_zshrc(
+        "export ZSH_AUTOSUGGEST_USE_ASYNC=1 ZSH_AUTOSUGGEST_STRATEGY=(history completion)"
+    )
+    install_zplugins(
+        "light",
+        "zsh-users/zsh-autosuggestions",
+        ices=("wait", "lucid", 'atload"_zsh_autosuggest_start"'),
+    )
 
-        # Unpack zip
-        with detect_changed_files(
-            local.cwd
-        ) as changed_files:
-            cmd.unzip(zip_path)
-
-        (bin_path,) = changed_files
-        dest_path = (
-            local.env.home / ".local" / "bin" / "exa"
-        )
-        dest_path.parent.mkdir()
-        cmd.mv(bin_path, dest_path)
-
-    # Setup aliases
-    append_init_scripts(
+    append_to_zshrc(
         """
-# Exa aliases
-alias xa='exa'
-alias ls='exa'
-alias lt='exa --tree'
-alias lg='exa --git -hl'
-alias l='exa -al'
-alias ll='exa -l'
-alias lll='exa -l --colour=always | less'
+# Load web-search plugin
+_unalias_web_search() {
+	unalias $(alias | sed --regexp-extended -n "s/(\w+)='web_search.*/\1/p");alias web='web_search google'
+}    
 """
+    )
+    install_zplugins(
+        "snippet",
+        "OMZ::plugins/web-search/web-search.plugin.zsh",
+        ices=(
+            "wait",
+            "lucid",
+            'atload"_unalias_web_search && unset -f _unalias_web_search"',
+        ),
+    )
+    append_to_zshrc("setopt auto_cd")
+    append_to_zshrc(
+        """
+# OMZ take command
+function tkdir() {
+  mkdir -p $@ && cd ${@:$#}
+}"""
+    )
+
+    install_zplugins(
+        "light",
+        "romkatv/powerlevel10k",
+        ices=(
+            "depth=1",
+            "lucid",
+            "atload'[[ ! -f ~/.p10k.zsh ]] && true || source ~/.p10k.zsh; _p9k_precmd'",
+            "nocd",
+        ),
     )
 
 
 def install_fd():
     install_with_apt("fd-find")
-    append_init_scripts(
+    append_to_zshrc(
         """
 # Fd-find alias
 alias fd='fdfind'
@@ -347,15 +314,17 @@ alias fd='fdfind'
 def install_tmux():
     install_with_apt("tmux")
     cmd.wget(TMUX_CONF_URL, "-O", HOME_PATH / ".tmux.conf")
-    append_zsh_plugins("tmux")
+
+    # Load non-startup essential ZSH plugin
+    install_zplugins(
+        "snippet", "OMZ::plugins/tmux/tmux.plugin.zsh", ices=("wait", "lucid"),
+    )
 
 
 def install_chrome():
     deb_name = "google-chrome-stable_current_amd64.deb"
     with local.cwd("/tmp"):
-        cmd.wget(
-            f"https://dl.google.com/linux/direct/{deb_name}"
-        )
+        cmd.wget(f"https://dl.google.com/linux/direct/{deb_name}")
         cmd.sudo[cmd.dpkg["-i", deb_name]]()
 
 
@@ -370,46 +339,33 @@ def install_canta_theme():
 
     with local.cwd("/tmp"):
         cmd.git(
-            "clone",
-            "https://github.com/vinceliuice/Canta-theme.git",
+            "clone", "https://github.com/vinceliuice/Canta-theme.git",
         )
         with local.cwd("Canta-theme"):
             local[local.cwd / "install.sh"]("-i")
 
     cmd.gsettings(
-        "set",
-        "org.gnome.desktop.interface",
-        "icon-theme",
-        "Canta",
+        "set", "org.gnome.desktop.interface", "icon-theme", "Canta",
     )
     cmd.gsettings(
-        "set",
-        "org.gnome.desktop.interface",
-        "gtk-theme",
-        "Canta-dark-compact",
+        "set", "org.gnome.desktop.interface", "gtk-theme", "Canta-dark-compact",
     )
     cmd.dconf(
-        "write",
-        "/org/gnome/shell/extensions/user-theme/name",
-        "'Canta-dark-compact'",
+        "write", "/org/gnome/shell/extensions/user-theme/name", "'Canta-dark-compact'",
     )
 
 
 def install_gnome_tweak_tool():
-    (
-        cmd.sudo[cmd.apt["install", "gnome-tweak-tool"]]
-        << "\n"
-    )()
+    (cmd.sudo[cmd.apt["install", "gnome-tweak-tool"]] << "\n")()
 
 
 def install_gnome_theme():
     install_with_apt("chrome-gnome-shell")
     cmd.google_chrome(
-        "https://chrome.google.com/webstore/detail/gnome-shell-integration/gphhapmejobijbbhgpjhcjognlahblep?utm_source=inline-install-disabled"
+        "https://chrome.google.com/webstore/detail/gnome-shell-integration/"
+        "gphhapmejobijbbhgpjhcjognlahblep?utm_source=inline-install-disabled"
     )
-    cmd.google_chrome(
-        "https://extensions.gnome.org/extension/19/user-themes/"
-    )
+    cmd.google_chrome("https://extensions.gnome.org/extension/19/user-themes/")
 
 
 def install_pandoc(github_token: str):
@@ -431,26 +387,18 @@ def install_pandoc(github_token: str):
   }
 }
   """
-    result = execute_github_graphql_query(
-        github_token, query
-    )
-    (release,) = result["data"]["repository"]["releases"][
-        "nodes"
-    ]
+    result = execute_github_graphql_query(github_token, query)
+    (release,) = result["data"]["repository"]["releases"]["nodes"]
 
     deb_url = next(
         n["downloadUrl"]
         for n in release["releaseAssets"]["nodes"]
         if n["name"].endswith(".deb")
     )
-    log(
-        f"Found {release['name']}, downloading deb from {deb_url}"
-    )
+    log(f"Found {release['name']}, downloading deb from {deb_url}")
 
     with local.cwd("/tmp"):
-        with detect_changed_files(
-            local.cwd
-        ) as changed_files:
+        with detect_changed_files(local.cwd) as changed_files:
             cmd.aria2c(deb_url, "-j", "10", "-x", "10")
         (deb_path,) = changed_files
         install_with_apt(deb_path)
@@ -458,27 +406,16 @@ def install_pandoc(github_token: str):
 
 def install_tex():
     with local.cwd("/tmp"):
-        cmd.wget(
-            "mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz"
-        )
+        cmd.wget("mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz")
         cmd.tar("-xvf", "install-tl-unx.tar.gz")
 
-        directory = next(
-            (
-                p
-                for p in (local.cwd // "install-tl*")
-                if p.is_dir()
-            )
-        )
+        directory = next((p for p in (local.cwd // "install-tl*") if p.is_dir()))
 
         path_component = None
         pattern = re.compile(r"Most importantly, add (.*)")
 
         with local.cwd(directory):
-            proc = (
-                cmd.sudo[local[local.cwd / "install-tl"]]
-                << "I\n"
-            ).popen()
+            proc = (cmd.sudo[local[local.cwd / "install-tl"]] << "I\n").popen()
             for out, err in proc:
                 if err:
                     log(err, logging.ERROR)
@@ -508,9 +445,7 @@ def install_pyenv_sys_python(system_venv_name: str):
     pyenv_root = local.env.home / ".pyenv"
     pyenv_versions_dir = pyenv_root / "versions"
     venv_path = pyenv_versions_dir / system_venv_name
-    local[sys.executable](
-        "-m", "venv", venv_path, "--system-site-packages"
-    )
+    local[sys.executable]("-m", "venv", venv_path, "--system-site-packages")
 
     # Set as system
     cmd.pyenv("global", system_venv_name)
@@ -521,20 +456,16 @@ def install_pyenv_sys_python(system_venv_name: str):
     with local.env(PYENV_VERSION=system_venv_name):
         # Install some utilities
         cmd.pip(
-            "install",
-            "nbdime",
-            "jupyter",
-            "jupyterlab",
-            "jupyter-console",
-            "makey",
+            "install", "nbdime", "jupyter", "jupyterlab", "jupyter-console", "makey",
         )
 
         # Setup nbdime as git diff engine
         cmd.nbdime("config-git", "--enable", "--global")
 
-    append_init_scripts(
+    append_to_zshrc(
         'alias jc="jupyter console"',
         'alias jl="jupyter lab"',
+        'alias jle="jupyter labextension"',
     )
 
 
@@ -554,18 +485,14 @@ def install_pyenv(system_venv_name: str):
     )()
     update_path("$HOME/.pyenv/bin")
 
-    # Add init scripts
-    append_init_scripts(
-        'eval "$(pyenv init -)"',
-        'eval "$(pyenv virtualenv-init -)"',
+    # Load non-startup essential plugin
+    install_zplugins(
+        "snippet", "OMZ::plugins/pyenv/pyenv.plugin.zsh", ices=("wait", "lucid"),
     )
-
     install_pyenv_sys_python(system_venv_name)
 
 
-def install_development_virtualenv(
-    python_version: str, virtualenv_name: str = None
-):
+def install_development_virtualenv(python_version: str, virtualenv_name: str = None):
     """
     Install Jupyter within a new virtual environment
 
@@ -640,63 +567,31 @@ def install_micro():
         lambda m: m.group(1) + m.group(2).replace("# ", ""),
         ZSHRC_PATH.read_text(),
     )
-    ZSHRC_PATH.write_text(
-        re.sub("(EDITOR=).*", r"\1'micro'", uncommented)
-    )
+    ZSHRC_PATH.write_text(re.sub("(EDITOR=).*", r"\1'micro'", uncommented))
 
 
 def install_keyboard_shortcuts():
     install_with_apt("xdotool")
 
     custom_bindings = [
-        (
-            "Screenshot area with Flameshot",
-            "flameshot gui",
-            "Print",
-        ),
+        ("Screenshot area with Flameshot", "flameshot gui", "Print",),
         ("Spotify", "spotify", "<Super>s"),
         # Make custom bindings for audio to avoid overwriting defaults
         *(
-            (
-                name,
-                f"xdotool key --clearmodifiers {key}",
-                shortcut,
-            )
+            (name, f"xdotool key --clearmodifiers {key}", shortcut,)
             for name, key, shortcut in
             # Create "xdotool" command for each key in the following
             [
-                (
-                    "Next",
-                    "XF86AudioNext",
-                    "<Alt><Super>Right",
-                ),
-                (
-                    "Previous",
-                    "XF86AudioPrev",
-                    "<Alt><Super>Left",
-                ),
-                (
-                    "Play/pause",
-                    "XF86AudioPlay",
-                    "<Alt><Super>Space",
-                ),
-                (
-                    "Volume up",
-                    "XF86AudioRaiseVolume",
-                    "<Alt><Super>Up",
-                ),
-                (
-                    "Volume down",
-                    "XF86AudioLowerVolume",
-                    "<Alt><Super>Down",
-                ),
+                ("Next", "XF86AudioNext", "<Alt><Super>Right",),
+                ("Previous", "XF86AudioPrev", "<Alt><Super>Left",),
+                ("Play/pause", "XF86AudioPlay", "<Alt><Super>Space",),
+                ("Volume up", "XF86AudioRaiseVolume", "<Alt><Super>Up",),
+                ("Volume down", "XF86AudioLowerVolume", "<Alt><Super>Down",),
             ]
         ),
     ]
 
-    media_settings_path = (
-        "org.gnome.settings-daemon.plugins.media-keys"
-    )
+    media_settings_path = "org.gnome.settings-daemon.plugins.media-keys"
     custom_binding_paths = [
         f"/{media_settings_path.replace('.', '/')}/custom-keybindings/custom{i}/"
         for i in range(len(custom_bindings))
@@ -713,14 +608,10 @@ def install_keyboard_shortcuts():
     }
 
     for name, binding in bindings.items():
-        cmd.gsettings(
-            "set", media_settings_path, name, repr(binding)
-        )
+        cmd.gsettings("set", media_settings_path, name, repr(binding))
 
     # Set custom keybindings
-    for path, (name, command, binding) in zip(
-        custom_binding_paths, custom_bindings
-    ):
+    for path, (name, command, binding) in zip(custom_binding_paths, custom_bindings):
         cmd.gsettings(
             "set",
             f"{media_settings_path}.custom-keybinding:{path}",
@@ -756,10 +647,7 @@ def install_gnome_favourites():
     ]
 
     cmd.gsettings(
-        "set",
-        "org.gnome.shell",
-        "favorite-apps",
-        str(favourites),
+        "set", "org.gnome.shell", "favorite-apps", str(favourites),
     )
 
 
@@ -768,25 +656,18 @@ def create_gpg_key(name, email_address, key_length):
 
     gpg = gnupg.GPG(homedir=str(GPG_HOME_PATH))
     input_data = gpg.gen_key_input(
-        key_type="RSA",
-        key_length=key_length,
-        name_real=name,
-        name_email=email_address,
+        key_type="RSA", key_length=key_length, name_real=name, name_email=email_address,
     )
     log("Generating GPG key")
     key = gpg.gen_key(input_data)
     log("Exporting GPG key")
-    key_data = next(
-        k
-        for k in gpg.list_keys()
-        if k["fingerprint"] == str(key)
-    )
+    key_data = next(k for k in gpg.list_keys() if k["fingerprint"] == str(key))
     signing_key = key_data["keyid"]
     return gpg.export_keys(signing_key), signing_key
 
 
 def install_git_shortcuts():
-    append_init_scripts(
+    append_to_zshrc(
         "# TODO tracking",
         "alias todo='git grep --no-pager  -EI \"TODO|FIXME\"'",
         "alias td='todo'",
@@ -795,15 +676,16 @@ def install_git_shortcuts():
 
 def install_git_flow():
     install_with_apt("git-flow")
-    append_zsh_plugins("git-flow")
+    install_zplugins(
+        "snippet", "OMZ::plugins/git-flow/git-flow.plugin.zsh", ices=("wait", "lucid"),
+    )
+    install_zplugins("light", "bobthecow/git-flow-completion", ices=("wait", "lucid"))
 
 
 def install_git(name, email_address):
     install_with_apt("git", "git-lfs")
 
-    cmd.git(
-        "config", "--global", "user.email", email_address
-    )
+    cmd.git("config", "--global", "user.email", email_address)
     cmd.git("config", "--global", "user.name", name)
 
     make_or_find_git_dir()
@@ -813,21 +695,15 @@ def install_gnupg(name, email_address, key_length):
     install_with_apt("gnupg")
     install_with_pip("gnupg")
     # Create public key and copy to clipboard
-    public_key, signing_key = create_gpg_key(
-        name, email_address, key_length
-    )
-    (
-        cmd.echo[public_key] | cmd.xclip["-sel", "clip"]
-    ) & plumbum.BG
+    public_key, signing_key = create_gpg_key(name, email_address, key_length)
+    (cmd.echo[public_key] | cmd.xclip["-sel", "clip"]) & plumbum.BG
 
     # Add key to GitHub & GitLab
     cmd.google_chrome("https://github.com/settings/gpg/new")
     cmd.google_chrome("https://gitlab.com/profile/gpg_keys")
 
     cmd.git("config", "--global", "commit.gpgsign", "true")
-    cmd.git(
-        "config", "--global", "user.signingkey", signing_key
-    )
+    cmd.git("config", "--global", "user.signingkey", signing_key)
 
     agent_path = GPG_HOME_PATH / "gpg-agent.conf"
     agent_path.touch()
@@ -838,20 +714,13 @@ default-cache-ttl 28800
 max-cache-ttl 28800"""
     )
 
-    append_init_scripts(
-        "# GPG signing\nexport GPG_TTY=$(tty)"
-    )
+    append_to_zshrc("# GPG signing\nexport GPG_TTY=$(tty)")
 
     # Create SSH key
-    ssh_private_key_path = Path(
-        "~/.ssh/id_ed25519"
-    ).expanduser()
-    cmd.ssh_keygen[
-        "-t", "ed25519", "-C", email_address
-    ] & plumbum.FG
+    ssh_private_key_path = Path("~/.ssh/id_ed25519").expanduser()
+    cmd.ssh_keygen["-t", "ed25519", "-C", email_address] & plumbum.FG
     (
-        cmd.cat[ssh_private_key_path.with_suffix(".pub")]
-        | cmd.xclip["-sel", "clip"]
+        cmd.cat[ssh_private_key_path.with_suffix(".pub")] | cmd.xclip["-sel", "clip"]
     ) & plumbum.BG
     cmd.google_chrome("https://github.com/settings/ssh/new")
     cmd.google_chrome("https://gitlab.com/profile/keys")
@@ -886,18 +755,13 @@ def graphql_errors_to_string(errors):
     messages = []
     for error in errors:
         locations = [
-            f'(line {p["line"]}, column {p["column"]})'
-            for p in error["locations"]
+            f'(line {p["line"]}, column {p["column"]})' for p in error["locations"]
         ]
-        messages.append(
-            f'{error["message"]} on {", ".join(locations)}'
-        )
+        messages.append(f'{error["message"]} on {", ".join(locations)}')
     return "\n".join(messages)
 
 
-def execute_github_graphql_query(
-    token: str, query: str
-) -> dict:
+def execute_github_graphql_query(token: str, query: str) -> dict:
     import urllib.request as request
     import urllib.error as error
 
@@ -912,16 +776,12 @@ def execute_github_graphql_query(
         resp = request.urlopen(req)
     except error.HTTPError as err:
         if err.code == 401:
-            raise TokenInvalidError(
-                f"Token {token!r} was invalid!"
-            ) from err
+            raise TokenInvalidError(f"Token {token!r} was invalid!") from err
         raise
 
     result = json.loads(resp.read())
     if "errors" in result:
-        raise ValueError(
-            graphql_errors_to_string(result["errors"])
-        )
+        raise ValueError(graphql_errors_to_string(result["errors"]))
     return result
 
 
@@ -943,9 +803,7 @@ def validate_github_token(token: str) -> str:
     return token
 
 
-def find_latest_github_tag(
-    token: str, owner: str, name: str
-) -> GitTag:
+def find_latest_github_tag(token: str, owner: str, name: str) -> GitTag:
     """
     Find latest Tag object from GitHub repo using GraphQL
 
@@ -983,9 +841,7 @@ def find_latest_github_tag(
     }
 }
     """
-    query = Template(query_template).substitute(
-        owner=owner, name=name
-    )
+    query = Template(query_template).substitute(owner=owner, name=name)
     result = execute_github_graphql_query(token, query)
 
     (edge,) = result["data"]["repository"]["refs"]["edges"]
@@ -998,9 +854,7 @@ def find_latest_github_tag(
     return GitTag(name=tag, tarball_url=url)
 
 
-def get_pyenv_sysconfig_data(
-    virtualenv_name: str,
-) -> SysconfigData:
+def get_pyenv_sysconfig_data(virtualenv_name: str,) -> SysconfigData:
     """
     Return the results of `sysconfig.get_paths()` and `sysconfig.get_config_vars()` from the required virtualenv
 
@@ -1039,9 +893,7 @@ def cmake_options_from_dict(opts):
     return [f"D{f}={v}" for f, v in opts.items()]
 
 
-def install_root_from_source(
-    virtualenv_name: str, n_threads: int, github_token: str
-):
+def install_root_from_source(virtualenv_name: str, n_threads: int, github_token: str):
     """
     Find latest ROOT sources, compile them, and link to the Python virtual environment
     :param virtualenv_name: name of PyEnv environment to link against
@@ -1049,9 +901,7 @@ def install_root_from_source(
     :param github_token: GitHub personal authentication token
     :return:
     """
-    tag = find_latest_github_tag(
-        github_token, "root-project", "root"
-    )
+    tag = find_latest_github_tag(github_token, "root-project", "root")
     log(f"Found latest root {tag.name}")
 
     # Install deps
@@ -1065,21 +915,12 @@ def install_root_from_source(
     )
 
     # Find various paths for virtual environment
-    sysconfig_data = get_pyenv_sysconfig_data(
-        virtualenv_name
-    )
+    sysconfig_data = get_pyenv_sysconfig_data(virtualenv_name)
 
-    lib_dir_path = Path(
-        sysconfig_data.config_vars["LIBDIR"]
-    )
+    lib_dir_path = Path(sysconfig_data.config_vars["LIBDIR"])
     python_bin_path = Path(sysconfig_data.executable)
-    python_lib_path = (
-        lib_dir_path
-        / sysconfig_data.config_vars["LDLIBRARY"]
-    )
-    python_include_path = Path(
-        sysconfig_data.paths["include"]
-    )
+    python_lib_path = lib_dir_path / sysconfig_data.config_vars["LDLIBRARY"]
+    python_include_path = Path(sysconfig_data.paths["include"])
 
     cmake_flags = {
         "PYTHON_INCLUDE_DIR": python_include_path,
@@ -1106,13 +947,11 @@ def install_root_from_source(
         ] & plumbum.FG
 
     # Insert this at start of zshrc to avoid adding /usr/local/bin to head of path
-    prepend_init_scripts(". /opt/root/bin/thisroot.sh")
+    prepend_to_zshrc(". /opt/root/bin/thisroot.sh")
 
 
 def install_geant4(github_token: str, n_threads: int):
-    tag = find_latest_github_tag(
-        github_token, "Geant4", "geant4"
-    )
+    tag = find_latest_github_tag(github_token, "Geant4", "geant4")
     cmake_flags = {
         "GEANT4_INSTALL_DATA": "ON",
         "GEANT4_USE_OPENGL_X11": "ON",
@@ -1144,7 +983,7 @@ def install_geant4(github_token: str, n_threads: int):
                 "--verbose",
             )
         ] & plumbum.FG
-    prepend_init_scripts(
+    prepend_to_zshrc(
         """
 cd $(dirname $(which geant4.sh))
 . geant4.sh
@@ -1167,17 +1006,14 @@ def bootstrap():
 NO_DEFAULT = object()
 
 
-def get_user_input(
-    prompt: str, default=NO_DEFAULT, converter=None
-):
+def get_user_input(prompt: str, default=NO_DEFAULT, converter=None):
     """Get the name of the main virtual environment"""
     while True:
         if default is NO_DEFAULT:
             value = input(f"{prompt}: ")
             if not value:
                 log(
-                    f"A value is required! Try again.",
-                    level=logging.ERROR,
+                    f"A value is required! Try again.", level=logging.ERROR,
                 )
                 continue
         else:
@@ -1190,8 +1026,7 @@ def get_user_input(
                 value = converter(value)
             except ValueError:
                 log(
-                    f"Invalid value {value!r}! Try again.",
-                    level=logging.ERROR,
+                    f"Invalid value {value!r}! Try again.", level=logging.ERROR,
                 )
                 continue
 
@@ -1200,18 +1035,10 @@ def get_user_input(
 
 def get_max_system_threads() -> int:
     """Return the number of threads available on the system."""
-    return int(
-        check_output(
-            ["grep", "-c", "cores", "/proc/cpuinfo"]
-        )
-        .decode()
-        .strip()
-    )
+    return int(check_output(["grep", "-c", "cores", "/proc/cpuinfo"]).decode().strip())
 
 
-def convert_number_threads(
-    n_total_threads: int, n_threads_str: str
-) -> int:
+def convert_number_threads(n_total_threads: int, n_threads_str: str) -> int:
     """Validate and clamp requested number of threads string to those available.
 
     :param n_total_threads: number of total threads
@@ -1220,9 +1047,7 @@ def convert_number_threads(
     """
     n_threads = int(n_threads_str)
     if not 0 < n_threads <= n_total_threads:
-        raise ValueError(
-            f"Invalid number of threads {n_threads}!"
-        )
+        raise ValueError(f"Invalid number of threads {n_threads}!")
     return n_threads
 
 
@@ -1272,9 +1097,7 @@ class DeferredValueFactory:
 deferred = DeferredValueFactory
 
 
-def deferred_user_input(
-    prompt: str, default=NO_DEFAULT, converter=None
-):
+def deferred_user_input(prompt: str, default=NO_DEFAULT, converter=None):
     @deferred
     def user_input():
         return get_user_input(prompt, default, converter)
@@ -1288,34 +1111,23 @@ def create_user_config() -> Config:
     config.N_BUILD_THREADS = deferred_user_input(
         "Enter number of build threads",
         config.N_MAX_SYSTEM_THREADS,
-        lambda s: convert_number_threads(
-            config.N_MAX_SYSTEM_THREADS, s
-        ),
+        lambda s: convert_number_threads(config.N_MAX_SYSTEM_THREADS, s),
     )
     config.DEVELOPMENT_VIRTUALENV_NAME = deferred_user_input(
         "Enter virtualenv name", "sci"
     )
     config.DEVELOPMENT_PYTHON_VERSION = deferred_user_input(
-        "Enter Python version string",
-        "miniconda3-latest",
-        lambda s: s.strip().lower(),
+        "Enter Python version string", "miniconda3-latest", lambda s: s.strip().lower(),
     )
-    config.GIT_USER_NAME = deferred_user_input(
-        "Enter git user-name", "Angus Hollands"
-    )
+    config.GIT_USER_NAME = deferred_user_input("Enter git user-name", "Angus Hollands")
     config.GIT_EMAIL_ADDRESS = deferred_user_input(
         "Enter git email-address", "goosey15@gmail.com"
     )
-    config.GIT_KEY_LENGTH = deferred_user_input(
-        "Enter git key length", 4096, int
-    )
+    config.GIT_KEY_LENGTH = deferred_user_input("Enter git key length", 4096, int)
     config.GITHUB_TOKEN = deferred_user_input(
-        "Enter GitHub personal token",
-        converter=validate_github_token,
+        "Enter GitHub personal token", converter=validate_github_token,
     )
-    config.SYSTEM_VENV_NAME = (
-        f"{get_system_python_version()}-system"
-    )
+    config.SYSTEM_VENV_NAME = f"{get_system_python_version()}-system"
     config.ROOT_USE_CONDA = deferred_user_input(
         "Use Conda package for ROOT?", "y", yes_no_to_bool
     )
@@ -1325,9 +1137,7 @@ def create_user_config() -> Config:
     def CONDA_CMD():
         # If conda is installed at all
         try:
-            return get_conda(
-                config.DEVELOPMENT_VIRTUALENV_NAME
-            )
+            return get_conda(config.DEVELOPMENT_VIRTUALENV_NAME)
         except FileNotFoundError:
             return None
 
@@ -1353,18 +1163,15 @@ def setup(config: Config):
         "xclip",
         "libbz2-dev",
     )
-    install_git(
-        config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS
-    )
+    install_git(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS)
     install_zsh()
+    install_zplugin()
     install_git_shortcuts()
     install_git_flow()
     install_with_apt("git-lfs")
     install_chrome()
     install_gnupg(
-        config.GIT_USER_NAME,
-        config.GIT_EMAIL_ADDRESS,
-        config.GIT_KEY_LENGTH,
+        config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS, config.GIT_KEY_LENGTH,
     )
     install_exa(config.GITHUB_TOKEN)
     install_fd()
@@ -1372,8 +1179,7 @@ def setup(config: Config):
 
     install_pyenv(config.SYSTEM_VENV_NAME)
     install_development_virtualenv(
-        config.DEVELOPMENT_PYTHON_VERSION,
-        config.DEVELOPMENT_VIRTUALENV_NAME,
+        config.DEVELOPMENT_PYTHON_VERSION, config.DEVELOPMENT_VIRTUALENV_NAME,
     )
     for package in (
         "pycharm-professional",
@@ -1400,9 +1206,7 @@ def setup(config: Config):
     install_pandoc(config.GITHUB_TOKEN)
 
     if config.CONDA_CMD and config.ROOT_USE_CONDA:
-        config.CONDA_CMD(
-            "install", "-c", "conda-forge", "root"
-        )
+        config.CONDA_CMD("install", "-c", "conda-forge", "root")
     else:
         install_root_from_source(
             config.DEVELOPMENT_VIRTUALENV_NAME,
@@ -1410,9 +1214,7 @@ def setup(config: Config):
             config.GITHUB_TOKEN,
         )
 
-    install_geant4(
-        config.GITHUB_TOKEN, config.N_BUILD_THREADS
-    )
+    install_geant4(config.GITHUB_TOKEN, config.N_BUILD_THREADS)
     install_tex()
 
 
