@@ -225,7 +225,7 @@ def install_zplugins(loader, *plugins, ices=()):
 
 def install_zplugin():
     # Install zplugin
-    # cmd.sh("-c", cmd.wget("https://raw.githubusercontent.com/zdharma/zplugin/master/doc/install.sh", "-O", "-"))
+    cmd.sh("-c", cmd.wget("https://raw.githubusercontent.com/zdharma/zplugin/master/doc/install.sh", "-O", "-"))
 
     # Load required OMZ lib plugins
     install_zplugins(
