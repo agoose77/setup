@@ -24,9 +24,6 @@ HOME_PATH = Path.home()
 ZSHRC_PATH = HOME_PATH / ".zshrc"
 ZPROFILE_PATH = HOME_PATH / ".zprofile"
 GPG_HOME_PATH = HOME_PATH / ".gnupg"
-ROOT_CPACK_PATCH_URL = (
-    "https://gist.github.com/agoose77/80e00a9baf1fb1a23e12c71f45431be9/raw"
-)
 GEANT4_CPACK_PATCH_URL = (
     "https://gist.github.com/agoose77/fba2fc5504933b7fb2c5b8c3cfd93529/raw"
 )
@@ -937,8 +934,6 @@ def install_root_from_source(virtualenv_name: str, n_threads: int, github_token:
                 tag.tarball_url,
                 "-j",
                 n_threads,
-                "-p",
-                ROOT_CPACK_PATCH_URL,
                 f"--version={tag.name.replace('v', '').replace('-', '.')}",
                 "--verbose",
                 "--copt",
