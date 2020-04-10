@@ -3,11 +3,12 @@ import logging
 import os
 import re
 import sys
+import shlex
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 from subprocess import check_output
-from typing import NamedTuple, List, Dict
+from typing import NamedTuple, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.environ.get("LOGLEVEL", "INFO"))
@@ -30,18 +31,10 @@ GEANT4_CPACK_PATCH_URL = (
 TMUX_CONF_URL = (
     "https://gist.githubusercontent.com/agoose77/3e3b273cbfdb8a870c97ebb346beef8e/raw"
 )
-valid = re.compile(r"[^\s=\(\)%]+=")
-
-
-def reload_plumbum_env():
-    """Reloads `local.env` after re-sourcing .zshrc"""
-    output = cmd.zsh("-c", "source ~/.zshrc && env")
-    env = {
-        k: v
-        for k, v in (l.split("=", 1) for l in output.splitlines() if valid.match(l))
-    }
-    local.env.update(**env)
-    return env
+EXPORT_OS_ENVIRON_SOURCE = f"""
+import os, json
+print(os.environ, end="")
+"""
 
 
 class GitTag(NamedTuple):
@@ -120,9 +113,26 @@ def detect_changed_files(directory):
     changed_files |= set(path.iterdir()) - before_files
 
 
+def reload_plumbum_env() -> Dict[str, Any]:
+    """Reloads `local.env` after re-sourcing .zshrc"""
+    output = cmd.zsh("-c", f"source ~/.zshrc && {sys.executable} -c {shlex.quote(EXPORT_OS_ENVIRON_SOURCE)}")
+    env = json.loads(output)
+    local.env.update(**env)
+    return env
+
+
+def modifies_environment(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        result = f(*args, **kwargs)
+        reload_plumbum_env()
+        return result
+    return wrapper
+
+
 #  Installers ##########################################################################################################
 def install_pip():
-    return check_output(["sudo", "apt", "install", "-y", "python3-pip"], shell=False,)
+    return check_output(["sudo", "apt", "install", "-y", "python3-pip"], shell=False, )
 
 
 def install_plumbum():
@@ -142,7 +152,13 @@ def install_with_pip(*packages):
     return check_output([sys.executable, "-m", "pip", "install", *packages])
 
 
-def install_with_snap(*packages, classic=False):
+def install_with_snap(*packages: str, classic: bool = False):
+    """Install package on the snap platform.
+
+    :param packages: tuple of package names
+    :param classic: whether package is considered unsafe
+    :return:
+    """
     if classic:
         packages += ("--classic",)
 
@@ -158,7 +174,13 @@ def install_powerline_fonts():
             local[local.cwd / "install.sh"]()
 
 
-def update_path(*components):
+@modifies_environment
+def update_path(*components: str):
+    """Update the PATH variable in .zshrc
+
+    :param components:
+    :return:
+    """
     contents = ZSHRC_PATH.read_text()
 
     def replacer(match_obj):
@@ -170,9 +192,9 @@ def update_path(*components):
         return f'export PATH="{":".join(path)}"'
 
     ZSHRC_PATH.write_text(re.sub('export PATH="?([^"\n]*)"?', replacer, contents))
-    reload_plumbum_env()
 
 
+@modifies_environment
 def append_to_zshrc(*scripts: str):
     ZSHRC_PATH.touch()
     zshrc_contents = ZSHRC_PATH.read_text()
@@ -180,9 +202,9 @@ def append_to_zshrc(*scripts: str):
         zshrc_contents += "\n"
     zshrc_contents += "\n".join(scripts)
     ZSHRC_PATH.write_text(zshrc_contents)
-    reload_plumbum_env()
 
 
+@modifies_environment
 def prepend_to_zshrc(*scripts: str):
     zshrc_contents = "\n".join(scripts)
     if not zshrc_contents.endswith("\n"):
@@ -473,12 +495,12 @@ def install_pyenv(system_venv_name: str):
     """
     # Install pyenv
     (
-        cmd.wget[
-            "-O",
-            "-",
-            "https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer",
-        ]
-        | cmd.bash
+            cmd.wget[
+                "-O",
+                "-",
+                "https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer",
+            ]
+            | cmd.bash
     )()
     update_path("$HOME/.pyenv/bin")
 
@@ -717,7 +739,7 @@ max-cache-ttl 28800"""
     ssh_private_key_path = Path("~/.ssh/id_ed25519").expanduser()
     cmd.ssh_keygen["-t", "ed25519", "-C", email_address] & plumbum.FG
     (
-        cmd.cat[ssh_private_key_path.with_suffix(".pub")] | cmd.xclip["-sel", "clip"]
+            cmd.cat[ssh_private_key_path.with_suffix(".pub")] | cmd.xclip["-sel", "clip"]
     ) & plumbum.BG
     cmd.google_chrome("https://github.com/settings/ssh/new")
     cmd.google_chrome("https://gitlab.com/profile/keys")
@@ -851,7 +873,7 @@ def find_latest_github_tag(token: str, owner: str, name: str) -> GitTag:
     return GitTag(name=tag, tarball_url=url)
 
 
-def get_pyenv_sysconfig_data(virtualenv_name: str,) -> SysconfigData:
+def get_pyenv_sysconfig_data(virtualenv_name: str, ) -> SysconfigData:
     """
     Return the results of `sysconfig.get_paths()` and `sysconfig.get_config_vars()` from the required virtualenv
 
@@ -1168,7 +1190,6 @@ def setup(config: Config):
     install_gnupg(
         config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS, config.GIT_KEY_LENGTH,
     )
-    install_exa(config.GITHUB_TOKEN)
     install_fd()
     install_tmux()
 
@@ -1177,9 +1198,9 @@ def setup(config: Config):
         config.DEVELOPMENT_PYTHON_VERSION, config.DEVELOPMENT_VIRTUALENV_NAME,
     )
     for package in (
-        "pycharm-professional",
-        "clion",
-        "webstorm",
+            "pycharm-professional",
+            "clion",
+            "webstorm",
     ):
         install_with_snap(package, classic=True)
     install_gnome_theme()
