@@ -4,6 +4,8 @@ import os
 import re
 import sys
 import shlex
+import tempfile
+import pexpect
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
@@ -24,6 +26,7 @@ logger.addHandler(ch)
 HOME_PATH = Path.home()
 ZSHRC_PATH = HOME_PATH / ".zshrc"
 ZPROFILE_PATH = HOME_PATH / ".zprofile"
+ZSHENV_PATH = HOME_PATH / ".zshenv"
 GPG_HOME_PATH = HOME_PATH / ".gnupg"
 GEANT4_CPACK_PATCH_URL = (
     "https://gist.github.com/agoose77/fba2fc5504933b7fb2c5b8c3cfd93529/raw"
@@ -32,8 +35,9 @@ TMUX_CONF_URL = (
     "https://gist.githubusercontent.com/agoose77/3e3b273cbfdb8a870c97ebb346beef8e/raw"
 )
 EXPORT_OS_ENVIRON_SOURCE = f"""
-import os, json
-print(os.environ, end="")
+import os, json, sys
+with open(sys.argv[1], 'w') as f:
+    json.dump(dict(os.environ), f)
 """
 
 
@@ -115,8 +119,13 @@ def detect_changed_files(directory):
 
 def reload_plumbum_env() -> Dict[str, Any]:
     """Reloads `local.env` after re-sourcing .zshrc"""
-    output = cmd.zsh("-c", f"source ~/.zshrc && {sys.executable} -c {shlex.quote(EXPORT_OS_ENVIRON_SOURCE)}")
-    env = json.loads(output)
+    fd, temp_path = tempfile.mkstemp()
+
+    with local.env(ZINIT_WAIT=" "):
+        (cmd.zsh["-is"] << f"{sys.executable} -c {shlex.quote(EXPORT_OS_ENVIRON_SOURCE)} {temp_path}")()
+        
+    with open(fd) as f:
+        env = json.load(f)
     local.env.update(**env)
     return env
 
@@ -152,7 +161,7 @@ def install_with_pip(*packages):
     return check_output([sys.executable, "-m", "pip", "install", *packages])
 
 
-def install_with_snap(*packages: str, classic: bool = False):
+def install_with_snap(*packages: str, classic: bool = False, beta: bool = False, edge: bool = False):
     """Install package on the snap platform.
 
     :param packages: tuple of package names
@@ -161,6 +170,10 @@ def install_with_snap(*packages: str, classic: bool = False):
     """
     if classic:
         packages += ("--classic",)
+    if beta:
+        packages += ("--beta",)
+    if edge:
+        packages += ("--edge",)
 
     (cmd.sudo[cmd.snap[("install", *packages)]] << "\n")()
 
@@ -194,7 +207,7 @@ def update_path(*components: str):
     ZSHRC_PATH.write_text(re.sub('export PATH="?([^"\n]*)"?', replacer, contents))
 
 
-@modifies_environment
+#@modifies_environment
 def append_to_zshrc(*scripts: str):
     ZSHRC_PATH.touch()
     zshrc_contents = ZSHRC_PATH.read_text()
@@ -204,7 +217,7 @@ def append_to_zshrc(*scripts: str):
     ZSHRC_PATH.write_text(zshrc_contents)
 
 
-@modifies_environment
+#@modifies_environment
 def prepend_to_zshrc(*scripts: str):
     zshrc_contents = "\n".join(scripts)
     if not zshrc_contents.endswith("\n"):
@@ -215,88 +228,77 @@ def prepend_to_zshrc(*scripts: str):
 
 def install_zsh():
     install_with_apt("zsh")
-    cmd.sudo[cmd.chsh["-s", cmd.which("zsh").strip()]]()
+    cmd.sudo[cmd.chsh["-s", local.which("zsh"), os.environ['USER']]]()
     # Enable PATH variable
-    zshrc_contents = re.sub(r"# (export PATH.*)", r"\1", ZSHRC_PATH.read_text())
-    ZSHRC_PATH.write_text(zshrc_contents)
-
-    # Add useful paths to PATH
-    update_path("$HOME/.local/bin", "$HOME/bin", "/usr/local/bin")
+    ZSHRC_PATH.write('export PATH="$HOME/.local/bin:$PATH"')
 
     # Fix prompt formatting
     prepend_to_zshrc(
         """
 # Hide prompt
-DEFAULT_USER=`whoami`"""
+DEFAULT_USER=`whoami`
+
+# Setup history
+HISTFILE=~/.histfile
+HISTSIZE=1000
+SAVEHIST=1000
+setopt SHARE_HISTORY
+"""
     )
 
-    # Fix sourcing profile in ZSH
-    ZPROFILE_PATH.write_text(
-        'for file in /etc/profile.d/*.sh; do source "${file}"; done'
-    )
 
-
-def install_zplugins(loader, *plugins, ices=()):
-    ice_string = f"zplugin ice {' '.join(ices)}\n" if ices else ""
-    plugin_strings = [f"{ice_string}zplugin {loader} {p}" for p in plugins]
+def install_zinit_plugins(loader, *plugins, ices=()):
+    ice_string = f"zinit ice {' '.join(ices)}\n" if ices else ""
+    plugin_strings = [f"{ice_string}zinit {loader} {p}" for p in plugins]
     append_to_zshrc(*plugin_strings)
 
 
-def install_zplugin():
-    # Install zplugin
-    cmd.sh("-c", cmd.wget("https://raw.githubusercontent.com/zdharma/zplugin/master/doc/install.sh", "-O", "-"))
+def install_zinit():
+    # Install zinit
+    cmd.sh("-c", cmd.wget("https://raw.githubusercontent.com/zdharma/zinit/master/doc/install.sh", "-O", "-"))
 
     # Load required OMZ lib plugins
-    install_zplugins(
-        "snippet",
-        "OMZ::lib/git.zsh",
-        "OMZ::lib/completion.zsh",
-        "OMZ::lib/grep.zsh",
-        "OMZ::lib/directories.zsh",
-        "OMZ::lib/history.zsh",
-        "OMZ::lib/functions.zsh",
-        "OMZ::lib/key-bindings.zsh",
-    )
+    append_to_zshrc("""
+# Allow caller to disable waiting
+WAIT=${ZINIT_WAIT-wait}
+zinit ${WAIT} lucid for \
+	OMZ::lib/git.zsh \
+	OMZ::lib/completion.zsh \
+	OMZ::lib/grep.zsh \
+	OMZ::lib/directories.zsh \
+	OMZ::lib/history.zsh \
+	OMZ::lib/functions.zsh \
+	OMZ::lib/key-bindings.zsh \
+    OMZ::plugins/git/git.plugin.zsh
+
+""")
 
     # Load non-startup essential OMZ plugins
-    install_zplugins(
-        "snippet", "OMZ::plugins/git/git.plugin.zsh", ices=("wait", "lucid"),
-    )
-    install_zplugins(
+    install_zinit_plugins(
         "light",
         "ogham/exa",
-        ices=("wait", "lucid", 'from"gh-r"', 'as"program"', 'mv"exa* -> exa"'),
+        ices=("${WAIT}", "lucid", 'from"gh-r"', 'as"program"', 'mv"exa* -> exa"'),
     )
-    install_zplugins("light", "DarrinTisdale/zsh-aliases-exa", ices=("wait", "lucid"))
-    install_zplugins(
+    install_zinit_plugins("light", "DarrinTisdale/zsh-aliases-exa", ices=("${WAIT}", "lucid"))
+    install_zinit_plugins(
         "light",
         "zdharma/fast-syntax-highlighting",
-        ices=("wait", "lucid", 'atinit"zpcompinit; zpcdreplay"'),
+        ices=("${WAIT}", "lucid", 'atinit"zpcompinit; zpcdreplay"'),
     )
     append_to_zshrc(
         "export ZSH_AUTOSUGGEST_USE_ASYNC=1 ZSH_AUTOSUGGEST_STRATEGY=(history completion)"
     )
-    install_zplugins(
+    install_zinit_plugins(
         "light",
         "zsh-users/zsh-autosuggestions",
-        ices=("wait", "lucid", 'atload"_zsh_autosuggest_start"'),
+        ices=("${WAIT}", "lucid", 'atload"_zsh_autosuggest_start"'),
     )
-
-    append_to_zshrc(
-        """
-# Load web-search plugin
-_unalias_web_search() {
-	unalias $(alias | sed --regexp-extended -n "s/(\w+)='web_search.*/\1/p");alias web='web_search google'
-}    
-"""
-    )
-    install_zplugins(
+    install_zinit_plugins(
         "snippet",
         "OMZ::plugins/web-search/web-search.plugin.zsh",
         ices=(
-            "wait",
-            "lucid",
-            'atload"_unalias_web_search && unset -f _unalias_web_search"',
+            "${WAIT}",
+            "lucid"
         ),
     )
     append_to_zshrc("setopt auto_cd")
@@ -308,7 +310,9 @@ function tkdir() {
 }"""
     )
 
-    install_zplugins(
+    cmd.wget('https://gist.githubusercontent.com/agoose77/f954a564b6da70bbcc9f9ff5ae36a9c5/raw', '-O', local.path('~/.p10k.zsh'))
+    append_to_zshrc('POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD=true')
+    install_zinit_plugins(
         "light",
         "romkatv/powerlevel10k",
         ices=(
@@ -335,8 +339,8 @@ def install_tmux():
     cmd.wget(TMUX_CONF_URL, "-O", HOME_PATH / ".tmux.conf")
 
     # Load non-startup essential ZSH plugin
-    install_zplugins(
-        "snippet", "OMZ::plugins/tmux/tmux.plugin.zsh", ices=("wait", "lucid"),
+    install_zinit_plugins(
+        "snippet", "OMZ::plugins/tmux/tmux.plugin.zsh", ices=("${WAIT}", "lucid"),
     )
 
 
@@ -348,7 +352,7 @@ def install_chrome():
 
 
 def install_numix_theme():
-    cmd.sudo[cmd.add_apt_repository["ppa:numix/ppa"]]()
+    add_add_apt_repositoryppa('ppa:numix/ppa')
     cmd.sudo[cmd.apt["update"]]()
     install_with_apt("numix-icon-theme-circle")
 
@@ -505,8 +509,8 @@ def install_pyenv(system_venv_name: str):
     update_path("$HOME/.pyenv/bin")
 
     # Load non-startup essential plugin
-    install_zplugins(
-        "snippet", "OMZ::plugins/pyenv/pyenv.plugin.zsh", ices=("wait", "lucid"),
+    install_zinit_plugins(
+        "snippet", "OMZ::plugins/pyenv/pyenv.plugin.zsh", ices=("${WAIT}", "lucid", "atload'eval \"$(pyenv virtualenv-init - zsh)\"'"),
     )
     install_pyenv_sys_python(system_venv_name)
 
@@ -547,7 +551,6 @@ def install_development_virtualenv(python_version: str, virtualenv_name: str = N
             "ipympl",
             "numpy-html",
             "jupytex",
-            "bqplot",
             "numba",
         )
 
@@ -566,9 +569,9 @@ def install_development_virtualenv(python_version: str, virtualenv_name: str = N
             "install",
             "@jupyter-widgets/jupyterlab-manager",
             "jupyter-matplotlib",
-            "bqplot",
+           # "bqplot",
             "@agoose77/jupyterlab-markup",
-            "@telamonian/theme-darcula",
+           # "@telamonian/theme-darcula",
             "@jupyterlab/katex-extension",
         )
 
@@ -578,16 +581,18 @@ def install_micro():
     Install the micro editor
     :return:
     """
-    install_with_snap("micro", classic=True)
-
     # Set default editor in ZSH
-    uncommented = re.sub(
-        r"(# Preferred editor.*?\n)((?:\s|.)*?fi)",
-        lambda m: m.group(1) + m.group(2).replace("# ", ""),
-        ZSHRC_PATH.read_text(),
-    )
-    ZSHRC_PATH.write_text(re.sub("(EDITOR=).*", r"\1'micro'", uncommented))
-
+    with local.cwd('/tmp'):
+        (cmd.curl['https://getmic.ro'] | cmd.bash)()
+        cmd.sudo[cmd.mv['micro', '/usr/local/bin']]()
+    append_to_zshrc("""export EDITOR=micro
+export MICRO_TRUECOLOR=1 
+    """)
+    
+    # Install colourscheme
+    theme_dir = local.path('~/.config/micro/colorschemes')
+    theme_dir.mkdir()
+    cmd.wget('https://gist.githubusercontent.com/agoose77/73d4c5b5a540535a200882bf5dd0131d/raw', '-O', theme_dir / 'ayu-micrage.micro')
 
 def install_keyboard_shortcuts():
     install_with_apt("xdotool")
@@ -695,10 +700,10 @@ def install_git_shortcuts():
 
 def install_git_flow():
     install_with_apt("git-flow")
-    install_zplugins(
-        "snippet", "OMZ::plugins/git-flow/git-flow.plugin.zsh", ices=("wait", "lucid"),
+    install_zinit_plugins(
+        "snippet", "OMZ::plugins/git-flow/git-flow.plugin.zsh", ices=("${WAIT}", "lucid"),
     )
-    install_zplugins("light", "bobthecow/git-flow-completion", ices=("wait", "lucid"))
+    install_zinit_plugins("light", "bobthecow/git-flow-completion", ices=("${WAIT}", "lucid"))
 
 
 def install_git(name, email_address):
@@ -1008,6 +1013,49 @@ cd - > /dev/null"""
     )
 
 
+def add_apt_repository(repo):
+    cmd.sudo[cmd.add_apt_repository[repo]]()
+
+
+def install_regolith():
+    add_apt_repository('ppa:regolith-linux/release')
+    install_with_apt('regolith-desktop', 'regolith-look-ayu-mirage')
+
+    # Set theme
+    cmd.regolith_look('set', 'ayu-mirage')
+    cmd.regolith_look('refresh')
+
+
+def install_meslo_nerdfont():
+    font_urls = [
+    'https://github.com/ryanoasis/nerd-fonts/raw/master/patched-fonts/Meslo/M/Regular/complete/Meslo%20LG%20M%20Regular%20Nerd%20Font%20Complete.ttf', 
+    'https://github.com/ryanoasis/nerd-fonts/raw/master/patched-fonts/Meslo/M/Italic/complete/Meslo%20LG%20M%20Italic%20Nerd%20Font%20Complete.ttf', 
+    'https://github.com/ryanoasis/nerd-fonts/raw/master/patched-fonts/Meslo/M/Bold/complete/Meslo%20LG%20M%20Bold%20Nerd%20Font%20Complete.ttf'
+    ]
+    fonts_dir = local.path('.fonts')
+    fonts_dir.mkdir()
+    
+    with local.cwd(fonts_dir):
+        for url in font_urls:
+            cmd.wget(url)
+    
+
+def install_alacritty():
+    add_apt_repository('ppa:mmstick76/alacritty')
+    install_with_apt('alacritty')
+    # Install terminfo - https://github.com/alacritty/alacritty/blob/master/INSTALL.md#terminfo
+    with local.cwd('/tmp'):
+        cmd.wget('https://raw.githubusercontent.com/alacritty/alacritty/master/extra/alacritty.info')
+        cmd.sudo['tic', '-xe', 'alacritty,alacritty-direct', 'alacritty.info']()
+        
+    config_dir = local.path('~/.config/alacritty')
+    config_dir.mkdir()    
+    cmd.wget('https://gist.github.com/agoose77/69a87cae13d29a87237cd7e7b8f01d6c/raw', '-O', config_dir/'alacritty.yml')
+
+    # Set default terminal
+    cmd.sudo['update-alternatives', '--set', 'x-terminal-emulator', local.which('alacritty')]()
+    
+
 def bootstrap():
     """Install system pip, and subsequently plumbum"""
     install_pip()
@@ -1163,9 +1211,11 @@ def create_user_config() -> Config:
 
 def setup(config: Config):
     bootstrap()
-
+    return
     install_with_apt(
         "cmake",
+        'curl',
+        'wget',
         "cmake-gui",
         "build-essential",
         "aria2",
@@ -1182,7 +1232,12 @@ def setup(config: Config):
     )
     install_git(config.GIT_USER_NAME, config.GIT_EMAIL_ADDRESS)
     install_zsh()
-    install_zplugin()
+
+    install_meslo_nerdfont()
+    install_regolith()
+    install_alacritty()
+    
+    install_zinit()
     install_git_shortcuts()
     install_git_flow()
     install_with_apt("git-lfs")
@@ -1203,22 +1258,23 @@ def setup(config: Config):
             "webstorm",
     ):
         install_with_snap(package, classic=True)
-    install_gnome_theme()
-    install_gnome_tweak_tool()
-    install_canta_theme()
-    install_with_snap("mailspring")
+
+    install_with_snap("thunderbird", beta=True)
     install_with_snap("spotify")
     install_with_snap("mathpix-snipping-tool")
     install_micro()
-    install_keyboard_shortcuts()
     install_with_snap("atom", classic=True)
-    install_gnome_favourites()
     install_with_apt("polari")
     install_with_apt("vlc")
     install_with_apt("fzf")
     install_with_snap("gimp")
     install_with_apt("ripgrep")
-    install_powerline_fonts()
+    #install_powerline_fonts()
+
+    #install_gnome_favourites()
+    install_gnome_theme()
+    install_gnome_tweak_tool()
+    #install_canta_theme()
     install_pandoc(config.GITHUB_TOKEN)
 
     if config.CONDA_CMD and config.ROOT_USE_CONDA:
