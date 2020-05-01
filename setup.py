@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 import os
@@ -1136,12 +1137,6 @@ def yes_no_to_bool(answer: str) -> bool:
     return answer.lower().strip() in {"y", "yes", "1"}
 
 
-# Decorate all installer functions
-for name, value in {**globals()}.items():
-    if name.startswith("install_") and callable(value):
-        globals()[name] = installer(value)
-
-
 class Config:
     """Configuration holder class.
 
@@ -1220,9 +1215,7 @@ def create_user_config() -> Config:
     return config
 
 
-def setup(config: Config):
-    bootstrap()
-    return
+def install_all(config: Config):
     install_with_apt(
         "cmake",
         'curl',
@@ -1299,9 +1292,31 @@ def setup(config: Config):
 
     install_geant4(config.GITHUB_TOKEN, config.N_BUILD_THREADS)
     install_tex()
+    
+
+INSTALLER_NAMES = [name
+    for name, value in globals().items() 
+    if name.startswith("install_") and callable(value)
+]
+
+    
+# Decorate all installer functions
+for name in INSTALLER_NAMES:
+    globals()[name] = installer(globals()[name])
 
 
 if __name__ == "__main__":
-    # Lazy configuration
+    
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+    
+    install_parser = subparsers.add_parser('install')
+    install_parser.set_defaults(install_all=True)
+
+    args = parser.parse_args()
+    
+    bootstrap()
     config = create_user_config()
-    setup(config)
+    
+    if hasattr(args, 'install_all'):
+        install_all(config)
